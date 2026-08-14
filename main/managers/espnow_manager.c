@@ -1,6 +1,5 @@
 #include "managers/espnow_manager.h"
 
-#include "core/ghostchi_identity.h"
 #include "managers/wifi_manager.h"
 
 #include "esp_err.h"
@@ -266,11 +265,15 @@ bool espnow_manager_start(uint8_t channel) {
         if (reconnect_sta_on_stop) wifi_manager_configure_sta_from_settings();
         return false;
     }
-    if (!ghostchi_identity_get_name(s_name, sizeof(s_name))) {
-        set_error("Unable to read the WiFi MAC address");
-        wifi_manager_set_reconnect_hold(false);
-        if (reconnect_sta_on_stop) wifi_manager_configure_sta_from_settings();
-        return false;
+    {
+        uint8_t mac[6] = {0};
+        if (esp_wifi_get_mac(WIFI_IF_STA, mac) != ESP_OK) {
+            set_error("Unable to read the WiFi MAC address");
+            wifi_manager_set_reconnect_hold(false);
+            if (reconnect_sta_on_stop) wifi_manager_configure_sta_from_settings();
+            return false;
+        }
+        snprintf(s_name, sizeof(s_name), "ESP-%02X%02X", mac[4], mac[5]);
     }
     ESP_LOGI(TAG, "Starting ESP-NOW channel=%u identity='%s' reconnect_sta=%d",
              channel, s_name, reconnect_sta_on_stop);

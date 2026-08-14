@@ -23,9 +23,6 @@
 #define SD_DIR_SCANS SD_GHOSTESP_ROOT "/scans"
 #define SD_DIR_SWEEPS SD_GHOSTESP_ROOT "/sweeps"
 #define SD_DIR_GPS SD_GHOSTESP_ROOT "/gps"
-#define SD_DIR_GHOSTCHI SD_GHOSTESP_ROOT "/ghostchi"
-#define SD_DIR_GHOSTCHI_PCAPS SD_DIR_GHOSTCHI "/pcaps"
-#define SD_DIR_GHOSTCHI_SESSIONS SD_DIR_GHOSTCHI "/sessions"
 #define SD_DIR_APPS SD_GHOSTESP_ROOT "/apps"
 #define SD_DIR_APP_CACHE SD_GHOSTESP_ROOT "/app_cache"
 #define SD_DIR_APPDATA SD_GHOSTESP_ROOT "/appdata"
@@ -111,7 +108,7 @@ bool sd_card_uses_shared_display_spi(void);
  *   sd_card_jit_end(display_was_suspended);
  *
  * Pass ensure_dirs=true to also call sd_card_setup_directory_structure()
- * after a successful mount (needed by audio / IR / GhostChi flows that
+ * after a successful mount (needed by audio / IR flows that
  * expect the directory tree to exist).
  */
 bool sd_card_jit_begin(bool *display_was_suspended, bool ensure_dirs);

@@ -23,9 +23,6 @@
 #include "managers/wifi_manager.h"
 #include "sdkconfig.h"
 #include "esp_idf_version.h"
-#ifdef CONFIG_WITH_ETHERNET
-#include "managers/ethernet_manager.h"
-#endif
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -374,9 +371,6 @@ void handle_ifconfig_cmd(int argc, char **argv) {
     print_ip_info("STA", esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), is_wifi_sta_connected());
     print_ip_info("AP", esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"),
                   mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
-#ifdef CONFIG_WITH_ETHERNET
-    print_ip_info("ETH", ethernet_manager_get_netif(), ethernet_manager_is_connected());
-#endif
 }
 static uint16_t icmp_checksum(const void *data, size_t len) {
     const uint16_t *words = (const uint16_t *)data;
@@ -503,10 +497,6 @@ void handle_status_cmd(int argc, char **argv) {
     glog("  heap: %u bytes free\n", (unsigned)esp_get_free_heap_size());
     glog("  wifi: %s\n", is_wifi_sta_connected() ? "connected" : "disconnected");
     glog("  sd: %s\n", sd_card_manager.is_initialized ? "mounted" : "not mounted");
-#ifdef CONFIG_WITH_ETHERNET
-    glog("  ethernet: %s\n", ethernet_manager_is_connected() ? "connected" : "disconnected");
-#endif
-    glog("  portal: %s\n", wifi_manager_is_evil_portal_active() ? "active" : "inactive");
 }
 void handle_clear_cmd(int argc, char **argv) {
     (void)argc; (void)argv;

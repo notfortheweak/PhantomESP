@@ -30,7 +30,6 @@
 #include <managers/rgb_manager.h>
 #include "managers/settings_manager.h"
 #include "managers/status_display_manager.h"
-#include "managers/ghostchi_manager.h"
 #include "esp_bt.h"
 #include "managers/ap_manager.h"
 #include "managers/wifi_manager.h"
@@ -38,14 +37,12 @@
 #include "scans/ble/flipper_scan.h"
 #include "scans/ble/airtag_scan.h"
 #include "scans/ble/gatt_scan.h"
-#include "attacks/ble/ble_spam.h"
 
 #define MAX_DEVICES 30
 #define MAX_HANDLERS 10
 #define MAX_PACKET_SIZE 31
 #define NIMBLE_HOST_TASK_STACK_SIZE 6144
 #define BLE_DISC_LOG_INTERVAL 500
-#define BLE_DISC_XP_INTERVAL 250
 
 // AirTag tracking definitions
 #ifdef CONFIG_SPIRAM
@@ -132,13 +129,11 @@ typedef struct {
     uint8_t payload[BLE_HS_ADV_MAX_SZ]; // Store the full payload
     size_t payload_len;
     int8_t rssi;
-    bool selected_for_spoofing;
 } AirTagDevice;
 
 #define AIRTAG_RSSI_LOG_INTERVAL_MS 3000
 EXT_RAM_BSS_ATTR static AirTagDevice discovered_airtags[MAX_AIRTAGS];
 static int discovered_airtag_count = 0;
-static int selected_airtag_index = -1; // Index of the AirTag selected for spoofing
 static TickType_t airtag_last_rssi_log[MAX_AIRTAGS];
 
 static ble_handler_t handlers[MAX_HANDLERS];
@@ -180,9 +175,6 @@ int ble_gap_event_general(struct ble_gap_event *event, void *arg) {
                      (unsigned long)disc_log_counter,
                      event->disc.rssi,
                      (unsigned int)event->disc.length_data);
-        }
-        if ((disc_log_counter % BLE_DISC_XP_INTERVAL) == 0) {
-            ghostchi_manager_add_xp(1);
         }
         char ble_mac[18];
         snprintf(ble_mac, sizeof(ble_mac), "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -648,7 +640,6 @@ void airtag_scanner_callback(struct ble_gap_event *event, size_t len) {
                 new_tag->rssi = event->disc.rssi;
                 memcpy(new_tag->payload, payload, payloadLength);
                 new_tag->payload_len = payloadLength;
-                new_tag->selected_for_spoofing = false;
                 discovered_airtag_count++;
                 airTagCount++; // Increment the original counter too, maybe rename it later
                 airtag_last_rssi_log[discovered_airtag_count - 1] = xTaskGetTickCount();
@@ -686,16 +677,6 @@ void ble_list_airtags(void) {
 // Function to select an AirTag by index
 void ble_select_airtag(int index) {
     airtag_scan_select(index);
-}
-
-// Function to start spoofing the selected AirTag (Basic Implementation)
-void ble_start_spoofing_selected_airtag(void) {
-    airtag_scan_start_spoofing();
-}
-
-// Function to stop any ongoing spoofing advertisement
-void ble_stop_spoofing(void) {
-    airtag_scan_stop_spoofing();
 }
 
 bool ble_start_custom_adv(const uint8_t *data, size_t len) {
@@ -799,7 +780,6 @@ bool ble_start_scanning(void) {
         ESP_LOGI(TAG_BLE, "Scanning started...");
         TERMINAL_VIEW_ADD_TEXT("Scanning started...\n");
         status_display_show_status("BLE Scanning");
-        ghostchi_manager_add_xp(5);
         return true;
     }
 }
@@ -921,8 +901,6 @@ void ble_init(void) {
 
 void ble_deinit(void) {
     if (ble_initialized) {
-        ble_spam_stop();
-        ble_stop_spoofing();
         if (flipper_scan_is_active()) {
             flipper_scan_stop();
         }
@@ -1060,9 +1038,6 @@ void ble_stop(void) {
     /* reset counters for next capture */
     ble_pcap_packet_count = 0;
     ble_pcap_event_total_count = 0;
-
-    ble_spam_stop();
-    ble_stop_spoofing();
 
     if (flipper_scan_is_active()) {
         flipper_scan_stop();
@@ -1319,15 +1294,6 @@ int ble_get_gatt_device_count(void) {
 
 int ble_get_gatt_device_data(int index, uint8_t *mac, int8_t *rssi, char *name, size_t name_len) {
     return gatt_scan_get_device_data(index, mac, rssi, name, name_len);
-}
-
-// BLE spam wrapper functions - delegate to ble_spam module
-void ble_start_ble_spam(ble_spam_type_t type) {
-    ble_spam_start(type);
-}
-
-void ble_stop_ble_spam(void) {
-    ble_spam_stop();
 }
 
 static void gatt_uuid_to_str(const ble_uuid_any_t *uuid, char *buf, size_t buf_len) {

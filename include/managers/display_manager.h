@@ -70,7 +70,6 @@ extern View compass_view;
 extern View accelerometer_view;
 extern View enviii_view;
 extern View wardriving_view;
-extern View ethernet_screen_view;
 extern View lockscreen_view;
 extern View *display_manager_previous_view;
 

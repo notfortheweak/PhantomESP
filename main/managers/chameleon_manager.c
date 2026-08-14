@@ -6,7 +6,6 @@
 #include "managers/chameleon_manager.h"
 #include "managers/nfc/mifare_attack.h"
 #include "managers/ble_manager.h"
-#include "managers/ghostchi_manager.h"
 
 #ifdef CONFIG_NFC_CHAMELEON
 #include "host/ble_hs.h"
@@ -2261,7 +2260,6 @@ bool chameleon_manager_read_hf_card(void) {
     g_cached_details_text = chameleon_manager_build_cached_details();
     g_cached_details_session++;
     
-    ghostchi_manager_add_xp(8);
     return true;
 }
 
@@ -3109,7 +3107,6 @@ bool chameleon_manager_read_ntag_card(void) {
         g_cached_details_text = chameleon_manager_build_cached_details();
         g_cached_details_session++;
     }
-    if (g_last_ntag_dump.valid) ghostchi_manager_add_xp(8);
     return g_last_ntag_dump.valid;
 }
 

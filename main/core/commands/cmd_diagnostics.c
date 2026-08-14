@@ -13,9 +13,6 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "attacks/ble/ble_spam.h"
-#include "attacks/ethernet/eth_arp_poison.h"
-#include "attacks/wifi/dhcp_starvation.h"
 #include "core/dns_server.h"
 #include "managers/aerial_detector_manager.h"
 #include "managers/ble_manager.h"
@@ -31,7 +28,6 @@
 #include "managers/views/terminal_screen.h"
 #include "managers/wifi_manager.h"
 #include "managers/zigbee_manager.h"
-#include "scans/wifi/arp_scan.h"
 #include "sdkconfig.h"
 #include "vendor/GPS/gps_logger.h"
 #include "vendor/pcap.h"
@@ -131,24 +127,9 @@ void handle_stop_flipper(int argc, char **argv) {
         wardriving_set_peer_assist(false);
     }
 
-    if (wifi_manager_is_channel_switch_attack_running()) {
-        glog("Stopped channel switch attack.\n");
-        stopped_any = true;
-    }
-    wifi_manager_stop_deauth();
-    if (wifi_manager_stop_handshake_deauth()) {
-        glog("Stopped handshake+deauth attack.\n");
-        stopped_any = true;
-    }
-    wifi_manager_stop_channel_switch_attack();
     wifi_manager_cancel_connect();
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
-    if (ble_spam_is_running()) {
-        glog("Stopped BLE spam.\n");
-        stopped_any = true;
-    }
-    ble_spam_stop();
     ble_stop_gatt_scan();
     ble_stop();
 #endif
@@ -162,15 +143,10 @@ void handle_stop_flipper(int argc, char **argv) {
     gps_manager_deinit(&g_gpsManager); // Clean up GPS if active
 
     // stop aerial operations
-    if (aerial_detector_is_scanning() || aerial_detector_is_emulating()) {
+    if (aerial_detector_is_scanning()) {
         glog("Stopped aerial detector.\n");
         stopped_any = true;
-        if (aerial_detector_is_scanning()) {
-            aerial_detector_stop_scan();
-        }
-        if (aerial_detector_is_emulating()) {
-            aerial_detector_stop_emulation();
-        }
+        aerial_detector_stop_scan();
     }
     aerial_detector_untrack_device();
 
@@ -209,29 +185,6 @@ void handle_stop_flipper(int argc, char **argv) {
 
     wifi_manager_stop_monitor_mode();  // Stop any active monitoring
 
-    // Stop network discovery scans
-    ssh_scan_cancel();
-    netbios_scan_cancel();
-    http_banner_scan_cancel();
-    snmp_scan_cancel();
-    arp_scan_stop_passive();
-    port_scan_cancel();
-    glog("Stopped network scans.\n");
-    stopped_any = true;
-
-    if (wifi_manager_stop_deauth_station()) {
-        glog("Stopped station deauth.\n");
-        stopped_any = true;
-    }
-    wifi_manager_stop_deauth();
-    dhcp_starvation_stop();
-    wifi_manager_stop_eapollogoff_attack();
-    wifi_manager_stop_sae_flood();
-    if (wifi_manager_karma_is_running()) {
-        glog("Stopped Karma attack.\n");
-        stopped_any = true;
-    }
-    wifi_manager_stop_karma();            // stop karma attack (sets flag; task self-exits)
     if (wifi_manager_is_evil_portal_active()) {
         glog("Stopped evil portal.\n");
         stopped_any = true;
@@ -250,19 +203,10 @@ void handle_stop_flipper(int argc, char **argv) {
     }
 
     wifi_manager_stop_tracking();  // stop ap/sta rssi tracking
-    wifi_manager_stop_beacon();  // stop beacon spam
 
 #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
     // ensure zigbee capture is stopped when using generic stop
     zigbee_manager_stop_capture();
-#endif
-#ifdef CONFIG_WITH_ETHERNET
-    eth_cmd_set_scan_cancel(true);
-    if (eth_arp_poison_is_running()) {
-        glog("Stopped Ethernet ARP poison.\n");
-        stopped_any = true;
-        eth_arp_poison_stop();
-    }
 #endif
     // ensure pcap is properly flushed and closed
     pcap_file_close();

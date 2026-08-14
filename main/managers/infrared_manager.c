@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cJSON.h"
-#include "managers/ghostchi_manager.h"
 #include "managers/sd_card_manager.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -736,7 +735,6 @@ bool infrared_manager_bruteforce(const char *path, uint32_t delay_ms) {
         ESP_LOGE(TAG_IR_MANAGER, "failed to read IR list for brute force from file: %s", path);
         return false;
     }
-    ghostchi_manager_add_xp(1);
     for (size_t i = 0; i < count; i++) {
         infrared_manager_transmit(&signals[i]);
         vTaskDelay(pdMS_TO_TICKS(delay_ms));

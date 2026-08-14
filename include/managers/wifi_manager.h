@@ -102,24 +102,9 @@ typedef struct {
 } wifi_ieee80211_packet_t;
 
 typedef struct {
-  char ip[16];
-  uint16_t open_ports[64];
-  uint8_t num_open_ports;
-} host_result_t;
-
-typedef struct {
   const char *ssid;
   const char *password;
 } wifi_credentials_t;
-
-typedef struct {
-  char subnet_prefix[16];
-  host_result_t *results;
-  size_t max_results;
-  size_t num_active_hosts;
-} scanner_ctx_t;
-
-// Note: arp_host_t and arp_scanner_ctx_t are now defined in scans/wifi/arp_scan.h
 
 typedef void (*wifi_promiscuous_cb_t_t)(void *buf,
                                         wifi_promiscuous_pkt_type_t type);
@@ -151,21 +136,6 @@ void wifi_manager_get_selected_aps(wifi_ap_record_t **aps, int *count);
 
 // Select a station from the station list based on index
 void wifi_manager_select_station(int index);
-
-// Deauthenticate the selected station or fallback to global deauth if none selected
-void wifi_manager_deauth_station(void);
-
-// Stop station deauth background task and restart AP if running, return true if stopped
-bool wifi_manager_stop_deauth_station(void);
-
-// broadcast ap beacon with optional ssid
-esp_err_t wifi_manager_broadcast_ap(const char *ssid);
-
-void wifi_manager_start_beacon(const char *ssid);
-
-void wifi_manager_auto_deauth();
-
-void wifi_manager_stop_beacon();
 
 void wifi_manager_set_manual_disconnect(bool disconnect);
 
@@ -227,10 +197,6 @@ esp_err_t wifi_manager_set_wireshark_fixed_channel(uint8_t channel);
 // via esp_wifi_set_channel. Returns ESP_ERR_INVALID_ARG for out-of-range values.
 esp_err_t wifi_manager_set_capture_channel_lock(uint8_t channel);
 
-void wifi_manager_start_deauth();
-
-void wifi_manager_stop_deauth();
-
 void wifi_stations_sniffer_callback(void *buf,
                                     wifi_promiscuous_pkt_type_t type);
 
@@ -248,85 +214,19 @@ void screen_music_visualizer_task(void *pvParameters);
 void rgb_visualizer_server_task(void *pvParameters);
 
 void animate_led_based_on_amplitude(void *pvParameters);
-
-void wifi_manager_scan_for_open_ports();
-
-bool get_subnet_prefix(scanner_ctx_t *ctx);
-
-bool is_host_active(const char *ip_addr);
-
-scanner_ctx_t *scanner_init(void);
-void scanner_cleanup(scanner_ctx_t *ctx);
-
-bool wifi_manager_scan_subnet();
-
-void scan_ports_on_host(const char *target_ip, host_result_t *result);
-void scan_ssh_on_host(const char *target_ip, host_result_t *result);
-
-bool scan_ip_port_range(const char *target_ip, uint16_t start_port,
-                        uint16_t end_port);
-
-void scan_udp_ports_on_host(const char *target_ip, host_result_t *result);
-bool scan_ip_udp_port_range(const char *target_ip, uint16_t start_port,
-                            uint16_t end_port);
-
-// ARP scan functions (wrapper that delegates to arp_scan module)
-bool wifi_manager_arp_scan_subnet(void);
-
-extern const uint16_t COMMON_PORTS[];
 extern const size_t NUM_PORTS;
 
 esp_err_t wifi_manager_start_scan_with_time(int seconds);
 
 void wifi_manager_scanall_chart(void);
 
-// Functions to manage a custom beacon SSID list
-void wifi_manager_add_beacon_ssid(const char *ssid);
-void wifi_manager_remove_beacon_ssid(const char *ssid);
-void wifi_manager_clear_beacon_list(void);
-void wifi_manager_show_beacon_list(void);
-void wifi_manager_start_beacon_list(void);
-
 void wifi_manager_start_live_ap_scan(void);
-
-void wifi_manager_start_eapollogoff_attack(void);
-void wifi_manager_stop_eapollogoff_attack(void);
-void wifi_manager_eapollogoff_display(void);
-void wifi_manager_eapollogoff_help(void);
-
-// SAE Handshake Flooding Attack (ESP32-C5/C6 only)
-void wifi_manager_start_sae_flood(const char *password);
-void wifi_manager_stop_sae_flood(void);
-void wifi_manager_sae_flood_help(void);
-
-// GTK Abuse Test
-void wifi_manager_start_gtk_abuse(const char *ssid, const char *password);
-void wifi_manager_stop_gtk_abuse(void);
-bool wifi_manager_gtk_abuse_is_running(void);
-void wifi_manager_gtk_abuse_display(void);
-
-// Channel Switch Attack (CSA)
-void wifi_manager_start_channel_switch_attack(void);
-void wifi_manager_stop_channel_switch_attack(void);
-bool wifi_manager_is_channel_switch_attack_running(void);
-
-// Handshake + Deauth combined attack
-void wifi_manager_start_handshake_deauth(void);
-bool wifi_manager_stop_handshake_deauth(void);
-bool wifi_manager_handshake_deauth_is_running(void);
 
 // HTML buffer functions for evil portal
 void wifi_manager_set_html_from_uart(void);
 void wifi_manager_store_html_chunk(const char* data, size_t len, bool is_final);
 void wifi_manager_clear_html_buffer(void);
 void wifi_manager_clear_scan_results(void);
-
-// Karma attack functions
-void wifi_manager_start_karma(void);
-void wifi_manager_stop_karma(void);
-bool wifi_manager_karma_is_running(void);
-void wifi_manager_set_karma_ssid_list(const char **ssids, int count);
-void wifi_manager_set_karma_portal_file(const char *path);
 
 // RSSI tracking functions
 void wifi_manager_track_ap(void);

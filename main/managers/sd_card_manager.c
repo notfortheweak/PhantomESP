@@ -416,10 +416,10 @@ sd_card_manager_t sd_card_manager = { // Change this based on board config
 
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 static int choose_free_s3_sd_spi_host(const spi_bus_config_t *bus_config, int dma_channel) {
-  /* When Ethernet or NRF24 is configured on SPI3, prefer SPI2 for SD to avoid
-   * stealing the host that Ethernet needs, which would force it onto SPI2
-   * where the display is already initialized (causing Ethernet to fail). */
-#if defined(CONFIG_WITH_ETHERNET) || defined(CONFIG_HAS_NRF24)
+  /* When NRF24 is configured on SPI3, prefer SPI2 for SD to avoid stealing the
+   * host that NRF24 needs, which would force it onto SPI2 where the display is
+   * already initialized. */
+#if defined(CONFIG_HAS_NRF24)
   int preferred_hosts[] = { SPI2_HOST, SPI3_HOST };
 #else
   int preferred_hosts[] = { SPI3_HOST, SPI2_HOST };
@@ -1005,9 +1005,9 @@ esp_err_t sd_card_init(void) {
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
   {
     int host_id = sd_host_id;
-#if defined(CONFIG_WITH_ETHERNET) || defined(CONFIG_HAS_NRF24)
-    /* SPI3 is reserved for Ethernet/NRF24 on this config. Use SPI2 directly
-     * (old pre-refactor behaviour) so we don't steal SPI3 from those peripherals.
+#if defined(CONFIG_HAS_NRF24)
+    /* SPI3 is reserved for NRF24 on this config. Use SPI2 directly
+     * (old pre-refactor behaviour) so we don't steal SPI3 from that peripheral.
      * INVALID_STATE means the bus is already up — reuse it. */
     esp_err_t bus_ret = spi_bus_initialize(SPI2_HOST, &bus_config, dmabus);
     if (bus_ret == ESP_OK) {
@@ -1579,9 +1579,6 @@ esp_err_t sd_card_setup_directory_structure() {
   const char *scans_dir = SD_DIR_SCANS;
   const char *sweeps_dir = SD_DIR_SWEEPS;
   const char *gps_dir = SD_DIR_GPS;
-  const char *ghostchi_dir = SD_DIR_GHOSTCHI;
-  const char *ghostchi_pcaps_dir = SD_DIR_GHOSTCHI_PCAPS;
-  const char *ghostchi_sessions_dir = SD_DIR_GHOSTCHI_SESSIONS;
   const char *games_dir = SD_GHOSTESP_ROOT "/games";
   const char *apps_dir = SD_DIR_APPS;
   const char *app_cache_dir = SD_DIR_APP_CACHE;
@@ -1650,15 +1647,6 @@ esp_err_t sd_card_setup_directory_structure() {
   if (ret != ESP_OK) return ret;
 
   ret = ensure_sd_dir_exists(sweeps_dir);
-  if (ret != ESP_OK) return ret;
-
-  ret = ensure_sd_dir_exists(ghostchi_dir);
-  if (ret != ESP_OK) return ret;
-
-  ret = ensure_sd_dir_exists(ghostchi_pcaps_dir);
-  if (ret != ESP_OK) return ret;
-
-  ret = ensure_sd_dir_exists(ghostchi_sessions_dir);
   if (ret != ESP_OK) return ret;
 
   // Create evil_portal directory

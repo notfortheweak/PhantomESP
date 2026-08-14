@@ -6,7 +6,6 @@
 #include "core/glog.h"
 #include "core/system_manager.h"
 #include "scans/ble/flipper_scan.h"
-#include "attacks/wifi/dhcp_starvation.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

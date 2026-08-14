@@ -17,7 +17,6 @@
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "managers/ble_manager.h"
-#include "attacks/ble/ble_spam.h"
 #include "scans/ble/advertiser_scan.h"
 #include "scans/ble/flipper_scan.h"
 #include "host/ble_gap.h"

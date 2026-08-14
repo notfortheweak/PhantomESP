@@ -4,7 +4,6 @@
 #include "lvgl.h"
 #include "managers/display_manager.h"
 #include "mbedtls/base64.h"  // For base64 decoding
-#include "managers/ghostchi_manager.h"
 #include "managers/rgb_manager.h"
 #include <esp_log.h>
 #include <string.h>
@@ -1514,7 +1513,6 @@ esp_err_t settings_save(const FSettings *settings) {
     } else {
         ESP_LOGE(TAG, "Failed to write settings before commit: %s", esp_err_to_name(err));
     }
-    ghostchi_manager_add_xp(1);
     return err;
 }
 

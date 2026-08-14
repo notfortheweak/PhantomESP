@@ -10,7 +10,6 @@
 #include "gui/options_view.h"
 #include "gui/ios_toggle.h"
 #include "managers/status_display_manager.h"
-#include "managers/ghostchi_manager.h"
 #include "gui/design_tokens.h"
 
 void update_learning_popup_selection(void);
@@ -1056,7 +1055,6 @@ static void universal_transmit_task(void *arg) {
 
     printf("universal_transmit_task: start %s -> %s\n", path, command);
 
-    ghostchi_manager_add_xp(1);
 
     if (strcmp(path, "TURNHISTVOFF") == 0) {
         printf("Using universal IR system for TURNHISTVOFF transmission\n");
@@ -1147,7 +1145,6 @@ static void universal_transmit_task(void *arg) {
 
     printf("universal_transmit_task: start %s -> %s\n", path, command);
 
-    ghostchi_manager_add_xp(1);
 
     if (strcmp(path, "TURNHISTVOFF") == 0) {
         printf("Using universal IR system for TURNHISTVOFF transmission\n");
@@ -2519,7 +2516,6 @@ static void command_event_execute(int idx) {
     if (idx < 0 || idx >= signal_count) return;
     ESP_LOGI(TAG, "transmitting command: %s", signals[idx].name);
     status_display_show_status("IR Transmitting...");
-    ghostchi_manager_add_xp(4);
     infrared_manager_transmit(&signals[idx]);
     status_display_show_status("IR Sent");
 }

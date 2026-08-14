@@ -59,8 +59,6 @@ void ble_stop_skimmer_detection(void);
 // AirTag specific functions
 void ble_list_airtags(void);
 void ble_select_airtag(int index);
-void ble_start_spoofing_selected_airtag(void);
-void ble_stop_spoofing(void);
 bool ble_start_custom_adv(const uint8_t *data, size_t len);
 bool ble_stop_custom_adv(void);
 
@@ -76,9 +74,6 @@ void ble_stop_gatt_scan(void);
 // Data access for sweep command
 int ble_get_gatt_device_count(void);
 int ble_get_gatt_device_data(int index, uint8_t *mac, int8_t *rssi, char *name, size_t name_len);
-
-// BLE spam functions - defined in attacks/ble/ble_spam.h
-// Include attacks/ble/ble_spam.h for ble_spam_type_t and ble_spam_* functions
 
 #endif
 #endif // BLE_MANAGER_H

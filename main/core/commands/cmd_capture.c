@@ -65,7 +65,6 @@ static void handle_capture_list(void) {
 #endif
     glog("On-device captures:\n");
     int count = capture_list_dir("/mnt/ghostesp/pcaps");
-    count += capture_list_dir("/mnt/ghostesp/ghostchi/pcaps");
     if (count == 0) glog("  No .pcap files found.\n");
     if (jit_mounted) sd_card_unmount_after_flush(display_suspended);
 }

@@ -4,7 +4,6 @@
 #include "esp_log.h"
 #include "core/glog.h"
 #include "managers/settings_manager.h"
-#include "managers/ghostchi_manager.h"
 #include "managers/ghostscript_runtime.h"
 #include "soc/gpio_periph.h"
 #include "soc/io_mux_reg.h"
@@ -1363,7 +1362,6 @@ static esp_err_t gps_manager_log_wardriving_data_impl(wardriving_data_t *data,
         return ret;
     }
 
-    ghostchi_manager_add_xp(data->ble_data.is_ble_device ? 3 : 4);
 
     static TickType_t last_status_tick = 0;
     if (last_status_tick == 0 || (now - last_status_tick) >= pdMS_TO_TICKS(GPS_STATUS_PERIOD_MS)) {

@@ -1,6 +1,5 @@
 #include "managers/views/lockscreen.h"
 #include "managers/settings_manager.h"
-#include "managers/ghostchi_mood.h"
 #include "managers/views/main_menu_screen.h"
 #include "gui/screen_layout.h"
 #include "gui/lvgl_safe.h"
@@ -596,32 +595,7 @@ static void lockscreen_build_companion_layout(int content_w, int content_h) {
 }
 
 static const lv_img_dsc_t *lockscreen_companion_sprite(void) {
-    ghostchi_mood_snapshot_t mood = {0};
-    ghostchi_mood_get_snapshot(&mood);
-    switch (mood.mood) {
-        case GHOSTCHI_MOOD_CELEBRATE:
-        case GHOSTCHI_MOOD_LOVE:
-            return &love_50x50;
-        case GHOSTCHI_MOOD_HAPPY:
-        case GHOSTCHI_MOOD_EXCITED:
-            return &happy_50x50;
-        case GHOSTCHI_MOOD_FOCUSED:
-        case GHOSTCHI_MOOD_SURPRISED:
-            return &surpised_50x50;
-        case GHOSTCHI_MOOD_AGGRESSIVE:
-            return &evil_50x50;
-        case GHOSTCHI_MOOD_ANGRY:
-            return &angry_50x50;
-        case GHOSTCHI_MOOD_TIRED:
-            return &tired_50x50;
-        case GHOSTCHI_MOOD_SLEEPY:
-            return &sleep_50x50;
-        case GHOSTCHI_MOOD_CONFUSED:
-            return &what2_50x50;
-        case GHOSTCHI_MOOD_NEUTRAL:
-        default:
-            return &love_50x50;
-    }
+    return &love_50x50;
 }
 
 static void lockscreen_destroy_numpad(void) {
@@ -673,7 +647,6 @@ static void lockscreen_input_handler(InputEvent *event) {
 
     if (s_no_pin_mode) {
         if (event->type != INPUT_TYPE_TOUCH || event->data.touch_data.state == LV_INDEV_STATE_REL) {
-            ghostchi_mood_record_event(GHOSTCHI_MOOD_EVENT_WAKE, 4);
             lockscreen_on_correct();
         }
         return;

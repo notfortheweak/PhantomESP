@@ -16,7 +16,6 @@
 #include "core/glog.h"
 #include "core/utils.h"
 #include "managers/ap_manager.h"
-#include "managers/ghostchi_manager.h"
 #include "managers/rgb_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/status_display_manager.h"
@@ -326,7 +325,6 @@ esp_err_t ap_scan_start_async(void) {
     scan_results_truncated = false;
     log_heap_status(TAG, "async_scan_start");
     status_display_show_status("WiFi Scanning...");
-    ghostchi_manager_add_xp(3);
 
     if (selected_aps != NULL) {
         free(selected_aps);

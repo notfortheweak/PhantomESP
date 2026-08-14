@@ -117,10 +117,4 @@ uint32_t aerial_detector_get_channel_hop_interval(void);
 int aerial_detector_get_channel_count(void);
 void aerial_detector_get_channels(uint8_t *channels, int max_count);
 
-// drone emulation/spoofing
-esp_err_t aerial_detector_start_emulation(const char *device_id, double lat, double lon, float alt);
-esp_err_t aerial_detector_stop_emulation(void);
-bool aerial_detector_is_emulating(void);
-void aerial_detector_update_emulation_position(double lat, double lon, float alt);
-
 #endif

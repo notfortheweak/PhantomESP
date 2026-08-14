@@ -12,7 +12,6 @@ list(FILTER app_sources EXCLUDE REGEX "managers/nfc/flipper_parsers/.*\\.c")
 idf_build_get_property(idf_target IDF_TARGET)
 if(idf_target STREQUAL "esp32s2")
     message(STATUS "Excluding BLE sources for ESP32-S2 target (no BLE hardware)")
-    list(FILTER app_sources EXCLUDE REGEX "attacks/ble/.*\\.c")
     list(FILTER app_sources EXCLUDE REGEX "scans/ble/.*\\.c")
     list(FILTER app_sources EXCLUDE REGEX "managers/ble_manager\\.c")
 endif()
@@ -157,12 +156,6 @@ if(idf_target STREQUAL "esp32c5" OR idf_target STREQUAL "esp32c6")
     list(APPEND required_components ieee802154)
     # Add Zigbee manager source
     list(APPEND sources "${CMAKE_SOURCE_DIR}/main/managers/zigbee_manager.c")
-endif()
-
-# Add Ethernet component when Ethernet is enabled
-if(CONFIG_WITH_ETHERNET)
-    list(APPEND required_components esp_eth)
-    list(APPEND sources "${CMAKE_SOURCE_DIR}/main/managers/ethernet_manager.c")
 endif()
 
 # Add BadUSB manager and HID script parser when BadUSB is enabled (S3 only)

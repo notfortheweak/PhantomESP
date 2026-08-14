@@ -8,9 +8,6 @@
 #include "managers/settings_manager.h"
 #include "managers/status_display_manager.h"
 #include "sdkconfig.h"
-#ifdef CONFIG_WITH_ETHERNET
-#include "managers/ethernet/eth_comm_handler.h"
-#endif
 #ifdef CONFIG_HAS_AUDIO_PLAYER
 #include "managers/audio_stream_manager.h"
 #endif
@@ -178,16 +175,6 @@ static void comm_command_callback(const char* command, const char* data, void* u
              command ? command : "", data ? data : "");
     ghostscript_emit_event_escaped("comm_command", comm_payload);
 
-#ifdef CONFIG_WITH_ETHERNET
-    if (eth_comm_handler_handle_command(command, data)) {
-        return;
-    }
-
-    if (strcmp(command, "stop") == 0) {
-        eth_cmd_set_scan_cancel(true);
-    }
-#endif
-    
 #ifdef CONFIG_HAS_AUDIO_PLAYER
     if (strcmp(command, "audio") == 0 && data && strncmp(data, "state ", 6) == 0) {
         char *end = NULL;

@@ -496,22 +496,6 @@ bool ble_device_detect_start_tracking(int index) {
     return true;
 }
 
-bool ble_device_detect_start_airtag_spoof(int index) {
-    if (index < 0 || index >= s_device_count) {
-        glog("Invalid BLE device index %d\n", index);
-        return false;
-    }
-
-    BLEDetectDevice *tag = &s_devices[index];
-    if (tag->type != BLE_DETECT_DEVICE_AIRTAG) {
-        glog("Selected device is not an AirTag\n");
-        return false;
-    }
-
-    return airtag_scan_spoof_device(tag->addr.val, tag->addr.type, tag->payload, tag->payload_len,
-                                    tag->rssi);
-}
-
 void ble_device_detect_stop_tracking(void) {
     s_tracking.active = false;
     s_tracking.last_log_tick = 0;

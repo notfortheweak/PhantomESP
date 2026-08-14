@@ -7,7 +7,6 @@
 #include "managers/infrared_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/views/error_popup.h"
-#include "managers/ghostchi_manager.h"
 #include "managers/ghostscript_runtime.h"
 #include "sdkconfig.h"
 #include "esp_timer.h"
@@ -109,7 +108,6 @@ static void ir_universal_send_task(void *arg) {
 
     g_ir_universal_send_cancel = false;
 
-    ghostchi_manager_add_xp(1);
 
 #ifdef CONFIG_BUILD_CONFIG_TEMPLATE
     bool poltergeist_held = false;
@@ -391,7 +389,6 @@ void handle_ir_cmd(int argc, char **argv) {
         }
 
         infrared_signal_t *sig = &signals[button_index];
-        ghostchi_manager_add_xp(4);
         bool ok = infrared_manager_transmit(sig);
         glog("IR: send %s\n", ok ? "OK" : "FAIL");
         if (sig->is_raw) {
@@ -585,7 +582,6 @@ void handle_ir_cmd(int argc, char **argv) {
             int idx = atoi(argv[3]);
             infrared_signal_t sig;
             if (universal_ir_get_signal(idx, &sig)) {
-                ghostchi_manager_add_xp(4);
                 bool ok = infrared_manager_transmit(&sig);
                 glog("IR: universal send %s\n", ok ? "OK" : "FAIL");
             } else {

@@ -14,7 +14,6 @@
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "managers/ble_manager.h"
 #include "managers/ble_bridge_manager.h"
-#include "attacks/ble/ble_spam.h"
 #include "scans/ble/advertiser_scan.h"
 #include "scans/ble/flipper_scan.h"
 #include "host/ble_gap.h"
@@ -48,39 +47,6 @@
 #endif
 #ifdef CONFIG_HAS_AUDIO_PLAYER
 #include "managers/audio_stream_manager.h"
-#endif
-#ifdef CONFIG_WITH_ETHERNET
-#include "managers/ethernet_manager.h"
-#include "managers/ethernet/eth_comm_handler.h"
-#include "managers/ethernet/eth_fingerprint.h"
-#include "managers/ethernet/eth_utils.h"
-#include "managers/ethernet/eth_http.h"
-#include "attacks/ethernet/eth_arp_poison.h"
-#include "lwip/ip4_addr.h"
-#include "lwip/etharp.h"
-#include "lwip/netif.h"
-#include "lwip/stats.h"
-#include "lwip/sockets.h"
-#include "lwip/netdb.h"
-#include "lwip/dns.h"
-#include "lwip/ip.h"
-#include "lwip/icmp.h"
-#include "lwip/inet.h"
-#include "esp_netif.h"
-#include "esp_netif_sntp.h"
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <sys/time.h>
-#include <time.h>
-#include "mbedtls/net_sockets.h"
-#include "mbedtls/ssl.h"
-#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
-#include "mbedtls/private/entropy.h"
-#include "mbedtls/private/ctr_drbg.h"
-#include "mbedtls/error.h"
-
-// Forward declaration - esp_netif_get_netif_impl is not in public API but exists internally
-void* esp_netif_get_netif_impl(esp_netif_t *esp_netif);
 #endif
 #include <esp_timer.h>
 #include <managers/gps_manager.h>
@@ -135,7 +101,6 @@ extern dns_server_handle_t dns_handle;
 #endif
 
 
-#include "attacks/wifi/dhcp_starvation.h"
 
 static Command *command_list_head = NULL;
 static Command *command_pool = NULL;
@@ -306,13 +271,6 @@ void register_commands() {
     register_command("gpsinfo", handle_gps_info);
     register_command("gpspin", handle_gps_pin);
     register_command("gpsbaud", handle_gps_baud);
-    register_command("scanports", handle_scan_ports);
-    register_command("scanarp", handle_scan_arp);
-    register_command("scanssh", handle_scan_ssh);
-    register_command("netbiosscan", handle_netbios_scan);
-    register_command("httpbannerscan", handle_http_banner_scan);
-    register_command("snmpprobe", handle_snmp_probe);
-    register_command("enumscan", handle_enum_scan);
     register_command("congestion", handle_congestion_cmd);
     register_command("listenprobes", handle_listen_probes_cmd);
     register_command("settings", handle_settings_cmd);
@@ -394,24 +352,6 @@ void register_commands() {
     register_command("badusb", handle_badusb_cmd);
 #if CONFIG_ENABLE_GHOSTSCRIPT
     register_command("script", handle_script_cmd);
-#endif
-#ifdef CONFIG_WITH_ETHERNET
-    register_command("ethup", handle_eth_up_cmd);
-    register_command("ethdown", handle_eth_down_cmd);
-    register_command("ethinfo", handle_eth_info_cmd);
-    register_command("ethfp", handle_eth_fingerprint_cmd);
-    register_command("etharp", handle_eth_arp_cmd);
-    register_command("ethports", handle_eth_ports_cmd);
-    register_command("ethping", handle_eth_ping_cmd);
-    register_command("ethdns", handle_eth_dns_cmd);
-    register_command("ethtrace", handle_eth_trace_cmd);
-    register_command("ethstats", handle_eth_stats_cmd);
-    register_command("ethconfig", handle_eth_config_cmd);
-    register_command("ethmac", handle_eth_mac_cmd);
-    register_command("ethserv", handle_eth_serv_cmd);
-    register_command("ethntp", handle_eth_ntp_cmd);
-    register_command("ethhttp", handle_eth_http_cmd);
-    register_command("ethpoison", handle_eth_poison_cmd);
 #endif
     register_command("mirror", handle_mirror_cmd);
     register_command("rave", handle_rave_cmd);

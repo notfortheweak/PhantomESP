@@ -8,7 +8,6 @@
 #include "esp_vfs_fat.h"
 #include "esp_heap_caps.h"
 #include "managers/sd_card_manager.h"
-#include "managers/ghostchi_manager.h"
 #include "managers/ghostscript_runtime.h"
 #include "gui/toast.h"
 #include "sys/time.h"
@@ -1091,7 +1090,6 @@ void pcap_file_close() {
       ESP_LOGI(PCAP_TAG, "PCAP file closed.");
       if (pcap_file_path[0] != '\0') {
         toast_show("PCAP saved", TOAST_SUCCESS);
-        ghostchi_manager_add_xp(6);
       }
     }
 

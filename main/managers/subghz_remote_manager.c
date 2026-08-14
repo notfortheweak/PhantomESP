@@ -1,6 +1,5 @@
 #include "managers/subghz_remote_manager.h"
 #include "managers/subghz_decoders.h"
-#include "managers/ghostchi_manager.h"
 #include "managers/ghostscript_runtime.h"
 #include "sdkconfig.h"
 
@@ -1963,7 +1962,6 @@ tx_cleanup:
     subghz_set_last_error("none");
     ESP_LOGI(TAG, "TX complete");
     toast_show("SubGHz TX complete", TOAST_SUCCESS);
-    ghostchi_manager_add_xp(5);
     return true;
 }
 

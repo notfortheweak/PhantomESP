@@ -8,8 +8,6 @@
 #include "core/memory_debug.h"
 #include "managers/ap_manager.h"
 #include "managers/display_manager.h"
-#include "managers/ghostchi_manager.h"
-#include "managers/ghostchi_mood.h"
 #include "managers/haptic_manager.h"
 #include "managers/rgb_manager.h"
 #include "managers/sd_card_manager.h"
@@ -54,10 +52,6 @@
 #include "esp_partition.h"
 #endif
 
-#ifdef CONFIG_WITH_ETHERNET
-#include "managers/ethernet_manager.h"
-#include "managers/ethernet/eth_comm_handler.h"
-#endif
 
 #ifdef CONFIG_HAS_BADUSB
 #include "managers/badusb_manager.h"
@@ -609,10 +603,6 @@ static void deferred_sd_init_task(void *arg) {
         return;
     }
 
-    // Load persisted Ghostchi XP before the first status bar is shown after
-    // splash, otherwise the badge briefly starts from Lv1 until Ghostchi opens.
-    (void)ghostchi_manager_probe_storage();
-
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
 #ifdef CONFIG_WITH_SCREEN
     boot_status_set_progress(-1.0f, "Saving core dump...");
@@ -654,8 +644,6 @@ static void deferred_sd_init_task(void *arg) {
 
 void app_main(void) {
     memory_debug_start_boot_trace();
-    MEASURE_INIT_RAM("Ghostchi Mood init", ghostchi_mood_init());
-    ghostchi_mood_record_event(GHOSTCHI_MOOD_EVENT_BOOT, 3);
 
 #if defined(CONFIG_USING_SPI) && defined(CONFIG_SD_SPI_CS_PIN)
     /* Keep the card deselected before any shared-bus display/touch traffic. */
@@ -690,15 +678,6 @@ void app_main(void) {
 
     MEASURE_INIT_RAM("Serial Manager", serial_manager_init());
     MEASURE_INIT_RAM("Wifi Manager", wifi_manager_init());
-#ifdef CONFIG_WITH_ETHERNET
-    {
-        esp_err_t eth_ret;
-        MEASURE_INIT_RAM("Ethernet Manager", eth_ret = ethernet_manager_init());
-        if (eth_ret != ESP_OK) {
-            ESP_LOGW(TAG, "Ethernet init failed: %s", esp_err_to_name(eth_ret));
-        }
-    }
-#endif
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     // MEASURE_INIT_RAM("BLE Manager", ble_init());
 #endif
@@ -723,10 +702,6 @@ void app_main(void) {
     gpio_set_level(10, 1); // set tdeck POWER_ON pin high to enable peripherals
 #endif
 
-#ifdef USB_MODULE
-    wifi_manager_auto_deauth();
-    return;
-#endif
 
 #if defined(CONFIG_USE_ENCODER) && defined(CONFIG_BUILD_CONFIG_TEMPLATE)
     if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "LilyGo TEmbedC1101") == 0) {
@@ -874,9 +849,6 @@ void app_main(void) {
     if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething") == 0) {
         peer_storage_manager_init_peer();
     }
-#endif
-#ifdef CONFIG_WITH_ETHERNET
-    MEASURE_INIT_RAM("Ethernet Comm Handler init", eth_comm_handler_init());
 #endif
 #ifdef CONFIG_HAS_MIC
     // Initialize MIC visualizer (will start sending amplitude over GhostLink when connected)

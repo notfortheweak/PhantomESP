@@ -28,7 +28,6 @@ int ble_device_detect_get_count(void);
 int ble_device_detect_get_device(int index, BLEDetectDeviceInfo *out_info);
 
 bool ble_device_detect_start_tracking(int index);
-bool ble_device_detect_start_airtag_spoof(int index);
 void ble_device_detect_stop_tracking(void);
 bool ble_device_detect_is_tracking(void);
 

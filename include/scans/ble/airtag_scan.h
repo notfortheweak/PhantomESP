@@ -54,28 +54,10 @@ void airtag_scan_print_results(void);
 bool airtag_scan_is_active(void);
 
 /**
- * @brief Select an AirTag for spoofing
- * 
+ * @brief Select an AirTag in the discovered list (for display/detail)
+ *
  * @param index Index of the AirTag in the discovered list
  */
 void airtag_scan_select(int index);
-
-/**
- * @brief Start spoofing the currently selected AirTag
- * 
- * Begins advertising using the selected AirTag's MAC address and
- * manufacturer data to mimic the device.
- */
-void airtag_scan_start_spoofing(void);
-
-/**
- * @brief Stop spoofing the current AirTag
- * 
- * Stops the advertising that was started for AirTag spoofing.
- */
-void airtag_scan_stop_spoofing(void);
-
-bool airtag_scan_spoof_device(const uint8_t *mac, uint8_t addr_type,
-                              const uint8_t *payload, size_t payload_len, int8_t rssi);
 
 #endif // AIRTAG_SCAN_H

@@ -65,24 +65,9 @@ void handle_chameleon_cmd(int argc, char **argv);
 void ble_bridge_handle_command(int argc, char **argv);
 #endif
 
-// Network reconnaissance: port, ARP, SSH, NetBIOS, HTTP banner, SNMP,
-// congestion, and probe listening.
-void handle_scan_ports(int argc, char **argv);
-void handle_scan_arp(int argc, char **argv);
-void handle_scan_ssh(int argc, char **argv);
-void handle_netbios_scan(int argc, char **argv);
-void handle_http_banner_scan(int argc, char **argv);
-void handle_snmp_probe(int argc, char **argv);
-void handle_enum_scan(int argc, char **argv);
+// Channel congestion scan and passive probe listening.
 void handle_congestion_cmd(int argc, char **argv);
 void handle_listen_probes_cmd(int argc, char **argv);
-
-// Scan cancellation helpers (used by stop-all handler)
-void port_scan_cancel(void);
-void ssh_scan_cancel(void);
-void netbios_scan_cancel(void);
-void http_banner_scan_cancel(void);
-void snmp_scan_cancel(void);
 
 
 // GPS commands
@@ -90,26 +75,6 @@ void handle_gps_info(int argc, char **argv);
 void handle_gps_pin(int argc, char **argv);
 void handle_gps_baud(int argc, char **argv);
 
-#ifdef CONFIG_WITH_ETHERNET
-// Ethernet
-void handle_eth_up_cmd(int argc, char **argv);
-void handle_eth_down_cmd(int argc, char **argv);
-void handle_eth_fingerprint_cmd(int argc, char **argv);
-void handle_eth_info_cmd(int argc, char **argv);
-void handle_eth_arp_cmd(int argc, char **argv);
-void handle_eth_ports_cmd(int argc, char **argv);
-void handle_eth_ping_cmd(int argc, char **argv);
-void handle_eth_dns_cmd(int argc, char **argv);
-void handle_eth_trace_cmd(int argc, char **argv);
-void handle_eth_stats_cmd(int argc, char **argv);
-void handle_eth_config_cmd(int argc, char **argv);
-void handle_eth_mac_cmd(int argc, char **argv);
-void handle_eth_serv_cmd(int argc, char **argv);
-void handle_eth_ntp_cmd(int argc, char **argv);
-void handle_eth_http_cmd(int argc, char **argv);
-void handle_eth_poison_cmd(int argc, char **argv);
-void eth_cmd_set_scan_cancel(bool cancel);
-#endif
 
 // Wardriver streaming command
 void handle_wdstream_cmd(int argc, char **argv);

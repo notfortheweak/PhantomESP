@@ -5,9 +5,7 @@
 #include "managers/microphone/mic_driver.h"
 #include "managers/zigbee_manager.h"
 #include "managers/ble_manager.h"
-#include "managers/ethernet_manager.h"
 #include "managers/infrared_manager.h"
-#include "managers/ghostchi_manager.h"
 #include "managers/subghz_remote_manager.h"
 #include "managers/views/nfc_view.h"
 #include "managers/nrf24_remote_manager.h"
@@ -925,8 +923,10 @@ bool plugin_api_wifi_monitor_stop(void) {
 }
 
 bool plugin_api_wifi_raw_tx(const void *data, size_t len) {
-    if (!has_permission(PLUGIN_PERMISSION_WIFI_CONTROL) || !data || len == 0) return false;
-    return esp_wifi_80211_tx(WIFI_IF_STA, data, len, false) == ESP_OK;
+    // Raw 802.11 frame injection retired (counter-surveillance fork: detect-only, no TX).
+    (void)data;
+    (void)len;
+    return false;
 }
 
 bool plugin_api_nfc_get_last_uid(uint8_t *uid, size_t *uid_len) {
@@ -991,7 +991,6 @@ bool plugin_api_ir_send_raw(uint32_t carrier_hz, const uint16_t *durations, size
     signal.payload.raw.timings_size = count;
     signal.payload.raw.frequency = carrier_hz ? carrier_hz : 38000;
     signal.payload.raw.duty_cycle = 0.33f;
-    ghostchi_manager_add_xp(4);
     bool ok = infrared_manager_transmit(&signal);
     free(timings);
     return ok;
@@ -1301,45 +1300,19 @@ void plugin_api_nrf24_set_paused(bool paused) {
 }
 
 bool plugin_api_wifi_deauth(const uint8_t bssid[6], const uint8_t sta[6], uint8_t reason) {
-    if (!has_permission(PLUGIN_PERMISSION_WIFI_CONTROL) || !bssid) return false;
-    uint8_t broadcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    const uint8_t *dst = sta ? sta : broadcast;
-    uint8_t frame[26] = {
-        0xc0, 0x00, 0x00, 0x00,
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0,
-        0x00, 0x00,
-        0x01, 0x00,
-    };
-    memcpy(&frame[4], dst, 6);
-    memcpy(&frame[10], bssid, 6);
-    memcpy(&frame[16], bssid, 6);
-    frame[24] = reason ? reason : 1;
-    return esp_wifi_80211_tx(WIFI_IF_STA, frame, sizeof(frame), false) == ESP_OK;
+    // Deauth injection retired (counter-surveillance fork: detect-only, no TX).
+    (void)bssid;
+    (void)sta;
+    (void)reason;
+    return false;
 }
 
 bool plugin_api_wifi_send_beacon(const char *ssid, const uint8_t bssid[6], uint8_t channel) {
-    if (!has_permission(PLUGIN_PERMISSION_WIFI_CONTROL) || !ssid || !bssid) return false;
-    size_t ssid_len = strnlen(ssid, 32);
-    uint8_t frame[128] = {0};
-    size_t off = 0;
-    const uint8_t broadcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    frame[off++] = 0x80; frame[off++] = 0x00; frame[off++] = 0x00; frame[off++] = 0x00;
-    memcpy(&frame[off], broadcast, 6); off += 6;
-    memcpy(&frame[off], bssid, 6); off += 6;
-    memcpy(&frame[off], bssid, 6); off += 6;
-    frame[off++] = 0x00; frame[off++] = 0x00;
-    off += 8;
-    frame[off++] = 0x64; frame[off++] = 0x00;
-    frame[off++] = 0x31; frame[off++] = 0x04;
-    frame[off++] = 0x00; frame[off++] = (uint8_t)ssid_len;
-    memcpy(&frame[off], ssid, ssid_len); off += ssid_len;
-    const uint8_t rates[] = {0x82, 0x84, 0x8b, 0x96};
-    frame[off++] = 0x01; frame[off++] = sizeof(rates);
-    memcpy(&frame[off], rates, sizeof(rates)); off += sizeof(rates);
-    frame[off++] = 0x03; frame[off++] = 0x01; frame[off++] = channel ? channel : 1;
-    return esp_wifi_80211_tx(WIFI_IF_STA, frame, off, false) == ESP_OK;
+    // Beacon injection retired (counter-surveillance fork: detect-only, no TX).
+    (void)ssid;
+    (void)bssid;
+    (void)channel;
+    return false;
 }
 
 bool plugin_api_wifi_pcap_start(const char *app_relative_path) {
@@ -1388,24 +1361,15 @@ bool plugin_api_wifi_pcap_stop(void) {
     return true;
 }
 
+// Ethernet subsystem removed (counter-surveillance fork). Plugin API kept as inert stubs.
 bool plugin_api_ethernet_is_connected(void) {
-#ifdef CONFIG_WITH_ETHERNET
-    return has_permission(PLUGIN_PERMISSION_ETHERNET) && ethernet_manager_is_connected();
-#else
     return false;
-#endif
 }
 
 bool plugin_api_ethernet_ip(char *out, size_t out_len) {
     if (!has_permission(PLUGIN_PERMISSION_ETHERNET) || !out || out_len == 0) return false;
-#ifdef CONFIG_WITH_ETHERNET
-    esp_netif_ip_info_t ip;
-    if (ethernet_manager_get_ip_info(&ip) != ESP_OK || ip.ip.addr == 0) return false;
-    return ip4addr_ntoa_r((const ip4_addr_t *)&ip.ip, out, out_len) != NULL;
-#else
-    if (out && out_len) out[0] = '\0';
+    out[0] = '\0';
     return false;
-#endif
 }
 
 int plugin_api_camera_capture_jpeg(void *buffer, size_t buffer_len) {

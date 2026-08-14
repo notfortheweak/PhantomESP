@@ -187,9 +187,6 @@ int chip_info_collect_enabled_features(chip_info_line_t *out, int max) {
     EMIT_FEATURE("Infrared RX");
 #endif
     EMIT_FEATURE("GPS");
-#ifdef CONFIG_WITH_ETHERNET
-    EMIT_FEATURE("Ethernet");
-#endif
 #ifdef CONFIG_HAS_BATTERY
     EMIT_FEATURE("Battery (Power Save)");
 #endif
@@ -334,9 +331,6 @@ int chip_info_collect_cards(chip_info_card_t *out, int max) {
         APPEND_CARD_FEATURE("Infrared RX");
 #endif
         APPEND_CARD_FEATURE("GPS");
-#ifdef CONFIG_WITH_ETHERNET
-        APPEND_CARD_FEATURE("Ethernet");
-#endif
 #ifdef CONFIG_HAS_BATTERY
         APPEND_CARD_FEATURE("Battery (Power Save)");
 #endif

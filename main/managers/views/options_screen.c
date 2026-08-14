@@ -21,7 +21,6 @@
 #include "managers/views/channel_congestion_screen.h"
 #include "managers/views/packet_monitor_screen.h"
 #include "managers/views/wardriving_screen.h"
-#include "managers/views/ethernet_screen.h"
 #include "managers/wigle_manager.h"
 #include "managers/config_manager.h"
 #include "managers/settings_sd_backup.h"
@@ -50,8 +49,6 @@
 #include "scans/ble/device_detect_scan.h"
 #include "scans/ble/gatt_scan.h"
 #include "scans/wifi/station_scan.h"
-#include "scans/wifi/arp_scan.h"
-#include "scans/wifi/enum4linux_scan.h"
 #include "core/commands.h"
 #include "esp_timer.h"
 #include <stdint.h>
@@ -211,15 +208,6 @@ static bool *g_sta_multi_selected = NULL;
 static int g_sta_multi_count = 0;
 static paged_menu_t *sta_multi_menu = NULL;
 
-// ARP scan flow
-#define ARP_LIST_PAGE_SIZE 10
-static paged_menu_t *arp_list_menu = NULL;
-static scan_status_t *arp_scan_status = NULL;
-static detail_view_t *arp_detail_view = NULL;
-static lv_timer_t *arp_scan_poll_timer = NULL;
-static int selected_arp_index = -1;
-static bool arp_scan_cancel_requested = false;
-
 // mDNS discovery flow
 #define MDNS_LIST_PAGE_SIZE 8
 static paged_menu_t *mdns_list_menu = NULL;
@@ -229,14 +217,6 @@ static lv_timer_t *mdns_scan_poll_timer = NULL;
 static int selected_mdns_index = -1;
 static bool mdns_scan_cancel_requested = false;
 
-// Enum4linux scan flow
-#define ENUM_LIST_PAGE_SIZE 10
-static paged_menu_t *enum_list_menu = NULL;
-static scan_status_t *enum_scan_status = NULL;
-static detail_view_t *enum_detail_view = NULL;
-static lv_timer_t *enum_scan_poll_timer = NULL;
-static int selected_enum_index = -1;
-static bool enum_scan_cancel_requested = false;
 
 // Sweep flow
 static scan_status_t *sweep_scan_status = NULL;
@@ -257,26 +237,12 @@ static void ble_detect_poll_timer_cb(lv_timer_t *timer);
 static void ble_adv_poll_timer_cb(lv_timer_t *timer);
 static void ble_gatt_poll_timer_cb(lv_timer_t *timer);
 
-static bool start_arp_scan_flow(void);
-static void arp_scan_poll_timer_cb(lv_timer_t *timer);
-static void arp_scan_complete_callback(void);
-static void arp_list_cleanup(void);
-static const char **arp_list_get_options(void);
-static void show_arp_detail(int index);
-
 static bool start_mdns_scan_flow(void);
 static void mdns_scan_poll_timer_cb(lv_timer_t *timer);
 static void mdns_scan_complete_callback(void);
 static void mdns_list_cleanup(void);
 static const char **mdns_list_get_options(void);
 static void show_mdns_detail(int index);
-
-static bool start_enum_scan_flow(void);
-static void enum_scan_poll_timer_cb(lv_timer_t *timer);
-static void enum_scan_complete_callback(void);
-static void enum_list_cleanup(void);
-static const char **enum_list_get_options(void);
-static void show_enum_detail(int index);
 
 static bool start_sweep_flow(void);
 static void sweep_poll_timer_cb(lv_timer_t *timer);
@@ -354,7 +320,6 @@ static bool use_compact_wifi_detail_layout(void) {
     return (LV_HOR_RES > LV_VER_RES && LV_VER_RES <= 160);
 }
 
-static void arp_detail_back_cb(lv_event_t *e);
 static void mdns_detail_back_cb(lv_event_t *e);
 static void sweep_detail_back_cb(lv_event_t *e);
 static void reserve_detail_touch_bar_space(detail_view_t *dv);
@@ -378,9 +343,6 @@ static bool handle_wifi_detail_keyboard(uint8_t key_value) {
     } else if (ble_gatt_detail_view) {
         active_detail = ble_gatt_detail_view;
         back_cb = ble_gatt_detail_back_cb;
-    } else if (arp_detail_view) {
-        active_detail = arp_detail_view;
-        back_cb = arp_detail_back_cb;
     } else if (mdns_detail_view) {
         active_detail = mdns_detail_view;
         back_cb = mdns_detail_back_cb;
@@ -635,7 +597,6 @@ static void ble_adv_set_subtext(int found_count) {
 #include "managers/views/setup_wizard_screen.h"
 #include "managers/wifi_manager.h"
 #include "core/wpa_crypto.h"
-#include "attacks/wifi/gtk_abuse.h"
 #include "managers/settings_manager.h"
 #include "esp_log.h"
 #include "core/glog.h"
@@ -1345,12 +1306,8 @@ typedef enum {
     WIFI_MENU_DNS_SINKHOLE_FILE_PICK,
     WIFI_MENU_DNS_SINKHOLE_DETAILS,
     WIFI_MENU_CAPTURE_BROWSER,
-    WIFI_MENU_ARP_LIST,
-    WIFI_MENU_ARP_DETAILS,
     WIFI_MENU_MDNS_LIST,
-    WIFI_MENU_MDNS_DETAILS,
-    WIFI_MENU_ENUM_LIST,
-    WIFI_MENU_ENUM_DETAILS
+    WIFI_MENU_MDNS_DETAILS
 } WifiMenuState;
 
 static WifiMenuState current_wifi_menu_state = WIFI_MENU_MAIN;
@@ -1401,12 +1358,7 @@ static const char * const wifi_environment_options[] = {
 };
 
 static const char * const wifi_network_options[] = {
-    "mDNS Discovery", "ARP Scan Network", "Scan Open Ports", "Scan SSH",
-    "NetBIOS Scan", "HTTP Banner Scan", "SNMP Probe",
-    "Enum Scan", "SNMP Walk",
-    "Scan SSH Host...", "NetBIOS Scan Host...", "HTTP Banner Host...", "SNMP Probe Host...", "Enum Scan Host...",
-    "SNMP Walk Host...",
-    "NetBIOS Subnet...", "HTTP Banner Subnet...", "SNMP Probe Subnet...", "SNMP Walk Subnet...",
+    "mDNS Discovery",
     NULL
 };
 
@@ -1447,7 +1399,6 @@ typedef enum {
     DUALCOMM_MENU_TOOLS,
     DUALCOMM_MENU_BLE,
     DUALCOMM_MENU_GPS,
-    DUALCOMM_MENU_ETHERNET,
     DUALCOMM_MENU_KEYBOARD
 } DualCommMenuState;
 
@@ -1462,7 +1413,6 @@ static const char * const dual_comm_main_options[] = {
     "Tools",
     "BLE",
     "GPS",
-    "Ethernet",
     "Keyboard",
     NULL
 };
@@ -1490,19 +1440,6 @@ static const char * const dual_comm_scan_options[] = {
     "Scan AP + STA",
     "Sweep",
     "mDNS Discovery",
-    "ARP Scan Network",
-    "Scan Open Ports",
-    "Scan SSH",
-    "NetBIOS Scan",
-    "HTTP Banner Scan",
-    "SNMP Probe",
-    "Scan SSH Host...",
-    "NetBIOS Scan Host...",
-    "HTTP Banner Host...",
-    "SNMP Probe Host...",
-    "NetBIOS Subnet...",
-    "HTTP Banner Subnet...",
-    "SNMP Probe Subnet...",
     "PineAP Detection",
     "Flock Detection",
     "Channel Congestion",
@@ -1541,7 +1478,6 @@ static const char * const dual_comm_capture_options[] = {
 static const char * const dual_comm_tools_options[] = {
     "Start Wardriving",
     "Stop Wardriving",
-    "Scan SSH",
     "Toggle WebUI AP Only",
     NULL
 };
@@ -1561,25 +1497,6 @@ static const char * const dual_comm_ble_options[] = {
 static const char * const dual_comm_gps_options[] = {
     "GPS Info",
     "BLE Wardriving",
-    NULL
-};
-
-static const char * const dual_comm_ethernet_options[] = {
-    "Initialise",
-    "Deinitialise",
-    "Ethernet Info",
-    "Fingerprint Scan",
-    "ARP Scan",
-    "Port Scan Local",
-    "Port Scan All",
-    "Ping Scan",
-    "DNS Lookup",
-    "Traceroute",
-    "HTTP Request",
-    "Sync NTP Time",
-    "Network Stats",
-    "Show Config",
-    "ARP Poison",
     NULL
 };
 
@@ -2049,8 +1966,7 @@ static const char * const bluetooth_gatt_options[] = {
     "Start GATT Scan", "List GATT Devices", "Select GATT Device", "Enumerate Services", "Track Device", NULL
 };
 static const char * const bluetooth_aerial_options[] = {
-    "Scan Aerial Devices", "List Aerial Devices", "Track Aerial Device", "Stop Aerial Scan", 
-    "Spoof Test Drone", "Stop Spoofing", NULL
+    "Scan Aerial Devices", "List Aerial Devices", "Track Aerial Device", "Stop Aerial Scan", NULL
 };
 
 typedef enum {
@@ -2267,185 +2183,6 @@ static void update_scroll_buttons_visibility(void);
 const char *options_menu_type_to_string(EOptionsMenuType menuType);
 
 // ============================================================================
-// ARP Scan Flow
-// ============================================================================
-
-static void arp_list_cleanup(void) {
-    if (arp_scan_poll_timer) {
-        lv_timer_del(arp_scan_poll_timer);
-        arp_scan_poll_timer = NULL;
-    }
-    if (arp_list_menu) {
-        paged_menu_destroy(arp_list_menu);
-        arp_list_menu = NULL;
-    }
-    if (arp_scan_status) {
-        scan_status_close(arp_scan_status);
-        arp_scan_status = NULL;
-    }
-    if (arp_detail_view) {
-        detail_view_destroy(arp_detail_view);
-        arp_detail_view = NULL;
-    }
-    arp_scan_clear_results();
-}
-
-static int arp_list_load_fn(int offset, int page_size, char names[][PAGED_MENU_NAME_MAX],
-                             bool *has_more, void *user_data) {
-    (void)user_data;
-    int count = arp_scan_get_count();
-    if (count <= 0) {
-        *has_more = false;
-        return 0;
-    }
-    int loaded = 0;
-    for (int i = offset; i < count && loaded < page_size; i++) {
-        const arp_host_t *host = arp_scan_get_host(i);
-        if (host) {
-            char mac_str[18];
-            char vendor[64] = {0};
-            format_mac_address(host->mac, mac_str, sizeof(mac_str), true);
-            ouis_lookup_vendor(mac_str, vendor, sizeof(vendor));
-            snprintf(names[loaded], PAGED_MENU_NAME_MAX, "%s  %s",
-                     host->ip, vendor[0] ? vendor : mac_str);
-            loaded++;
-        }
-    }
-    *has_more = (offset + loaded) < count;
-    return loaded;
-}
-
-static const char **arp_list_get_options(void) {
-    if (!arp_list_menu) {
-        arp_list_menu = paged_menu_create(ARP_LIST_PAGE_SIZE, arp_list_load_fn, NULL);
-    }
-    return paged_menu_get_options(arp_list_menu);
-}
-
-static void arp_detail_back_cb(lv_event_t *e) {
-    (void)e;
-    if (arp_detail_view) {
-        detail_view_destroy(arp_detail_view);
-        arp_detail_view = NULL;
-    }
-    current_wifi_menu_state = WIFI_MENU_ARP_LIST;
-    rebuild_current_menu();
-}
-
-static void show_arp_detail(int index) {
-    const arp_host_t *host = arp_scan_get_host(index);
-    if (!host) {
-        error_popup_create("Host not found");
-        return;
-    }
-    selected_arp_index = index;
-
-    if (arp_detail_view) {
-        detail_view_destroy(arp_detail_view);
-    }
-    arp_detail_view = detail_view_create(lv_scr_act(), "ARP Host");
-    reserve_detail_touch_bar_space(arp_detail_view);
-
-    char mac_str[18];
-    format_mac_address(host->mac, mac_str, sizeof(mac_str), true);
-
-    detail_view_add_info(arp_detail_view, "IP", host->ip);
-    detail_view_add_info(arp_detail_view, "MAC", mac_str);
-
-    char vendor[64] = {0};
-    ouis_lookup_vendor(mac_str, vendor, sizeof(vendor));
-    if (vendor[0]) {
-        detail_view_add_info(arp_detail_view, "Vendor", vendor);
-    }
-
-    detail_view_add_back(arp_detail_view, arp_detail_back_cb, NULL);
-    current_wifi_menu_state = WIFI_MENU_ARP_DETAILS;
-}
-
-static void arp_scan_complete_callback(void) {
-    if (arp_scan_status) {
-        scan_status_close(arp_scan_status);
-        arp_scan_status = NULL;
-    }
-    int count = arp_scan_get_count();
-    if (count == 0) {
-        error_popup_create("No hosts found");
-        current_wifi_menu_state = WIFI_MENU_SCAN_SELECT;
-        rebuild_current_menu();
-        return;
-    }
-    if (arp_list_menu) {
-        paged_menu_reset(arp_list_menu);
-    }
-    current_wifi_menu_state = WIFI_MENU_ARP_LIST;
-    rebuild_current_menu();
-}
-
-static void arp_scan_poll_timer_cb(lv_timer_t *timer) {
-    (void)timer;
-    if (arp_scan_check_done()) {
-        lv_timer_del(arp_scan_poll_timer);
-        arp_scan_poll_timer = NULL;
-        arp_scan_finish_async();
-        if (arp_scan_cancel_requested) {
-            arp_scan_cancel_requested = false;
-            arp_scan_clear_results();
-            return;
-        }
-        arp_scan_complete_callback();
-        return;
-    }
-    // Update spinner with live progress
-    int pass = 0, total_passes = 0, scanned = 0, total_hosts = 0, found = 0;
-    arp_scan_get_progress(&pass, &total_passes, &scanned, &total_hosts, &found);
-    if (total_hosts > 0 && arp_scan_status) {
-        char buf[48];
-        snprintf(buf, sizeof(buf), "Pass %d/%d  %d/%d  %d found",
-                 pass, total_passes, scanned, total_hosts, found);
-        scan_status_set_subtext(arp_scan_status, buf);
-    }
-}
-
-static void arp_scan_cancel_cleanup(void *arg) {
-    (void)arg;
-    if (arp_scan_status) {
-        scan_status_close(arp_scan_status);
-        arp_scan_status = NULL;
-    }
-    opt_touch_started = false;
-    option_fired = false;
-    display_manager_add_status_bar(options_menu_type_to_string(SelectedMenuType));
-}
-
-static void arp_scan_cancel_cb(void) {
-    if (arp_scan_cancel_requested) return;
-    arp_scan_cancel_requested = true;
-    option_input_blocked_until_us = esp_timer_get_time() + 500000;
-    arp_scan_cancel();
-    lv_async_call(arp_scan_cancel_cleanup, NULL);
-}
-
-static bool start_arp_scan_flow(void) {
-    arp_list_cleanup();
-    arp_scan_cancel_requested = false;
-    arp_scan_status = scan_status_create("ARP Scanning");
-    if (arp_scan_status) {
-        scan_status_set_subtext(arp_scan_status, "Tap to cancel");
-        scan_status_set_cancel_cb(arp_scan_status, arp_scan_cancel_cb);
-    }
-    esp_err_t err = arp_scan_start_async();
-    if (err != ESP_OK) {
-        if (arp_scan_status) {
-            scan_status_close(arp_scan_status);
-            arp_scan_status = NULL;
-        }
-        return false;
-    }
-    arp_scan_poll_timer = lv_timer_create(arp_scan_poll_timer_cb, 100, NULL);
-    return true;
-}
-
-// ============================================================================
 // mDNS Discovery Flow
 // ============================================================================
 
@@ -2609,183 +2346,6 @@ static bool start_mdns_scan_flow(void) {
     return true;
 }
 
-// ============================================================================
-// Enum4linux Scan Flow
-// ============================================================================
-
-static void enum_list_cleanup(void) {
-    if (enum_scan_poll_timer) {
-        lv_timer_del(enum_scan_poll_timer);
-        enum_scan_poll_timer = NULL;
-    }
-    if (enum_list_menu) {
-        paged_menu_destroy(enum_list_menu);
-        enum_list_menu = NULL;
-    }
-    if (enum_scan_status) {
-        scan_status_close(enum_scan_status);
-        enum_scan_status = NULL;
-    }
-    if (enum_detail_view) {
-        detail_view_destroy(enum_detail_view);
-        enum_detail_view = NULL;
-    }
-    enum_scan_clear_results();
-}
-
-static int enum_list_load_fn(int offset, int page_size, char names[][PAGED_MENU_NAME_MAX],
-                              bool *has_more, void *user_data) {
-    (void)user_data;
-    int count = enum_scan_get_count();
-    if (count <= 0) { *has_more = false; return 0; }
-    int loaded = 0;
-    for (int i = offset; i < count && loaded < page_size; i++) {
-        const enum_host_t *host = enum_scan_get_host(i);
-        if (host) {
-            snprintf(names[loaded], PAGED_MENU_NAME_MAX, "%s  %s",
-                     host->ip, host->hostname[0] ? host->hostname : "SMB");
-            loaded++;
-        }
-    }
-    *has_more = (offset + loaded) < count;
-    return loaded;
-}
-
-static const char **enum_list_get_options(void) {
-    if (!enum_list_menu) {
-        enum_list_menu = paged_menu_create(ENUM_LIST_PAGE_SIZE, enum_list_load_fn, NULL);
-    }
-    return paged_menu_get_options(enum_list_menu);
-}
-
-static void enum_detail_back_cb(lv_event_t *e) {
-    (void)e;
-    if (enum_detail_view) {
-        detail_view_destroy(enum_detail_view);
-        enum_detail_view = NULL;
-    }
-    current_wifi_menu_state = WIFI_MENU_ENUM_LIST;
-    rebuild_current_menu();
-}
-
-static void show_enum_detail(int index) {
-    const enum_host_t *host = enum_scan_get_host(index);
-    if (!host) {
-        error_popup_create("Host not found");
-        return;
-    }
-    selected_enum_index = index;
-
-    if (enum_detail_view) {
-        detail_view_destroy(enum_detail_view);
-    }
-    enum_detail_view = detail_view_create(lv_scr_act(), "Enum Results");
-    reserve_detail_touch_bar_space(enum_detail_view);
-
-    detail_view_add_info(enum_detail_view, "IP", host->ip);
-    if (host->hostname[0])
-        detail_view_add_info(enum_detail_view, "Hostname", host->hostname);
-    if (host->os_version[0])
-        detail_view_add_info(enum_detail_view, "OS", host->os_version);
-    if (host->domain[0])
-        detail_view_add_info(enum_detail_view, "Domain", host->domain);
-
-    if (host->share_count > 0) {
-        detail_view_add_header(enum_detail_view, "Shares");
-        for (int i = 0; i < host->share_count; i++) {
-            detail_view_add_info(enum_detail_view, host->shares[i].name,
-                                 host->shares[i].type);
-        }
-    }
-
-    if (host->user_count > 0) {
-        detail_view_add_header(enum_detail_view, "Users");
-        char user_list[256] = {0};
-        size_t pos = 0;
-        for (int i = 0; i < host->user_count && pos < sizeof(user_list) - 1; i++) {
-            int w = snprintf(&user_list[pos], sizeof(user_list) - pos,
-                             "%s%s", i > 0 ? ", " : "", host->users[i]);
-            if (w > 0) pos += (size_t)w;
-        }
-        detail_view_add_info(enum_detail_view, "Users", user_list);
-    }
-
-    detail_view_add_back(enum_detail_view, enum_detail_back_cb, NULL);
-    current_wifi_menu_state = WIFI_MENU_ENUM_DETAILS;
-}
-
-static void enum_scan_complete_callback(void) {
-    if (enum_scan_status) {
-        scan_status_close(enum_scan_status);
-        enum_scan_status = NULL;
-    }
-    int count = enum_scan_get_count();
-    if (count == 0) {
-        error_popup_create("No SMB hosts found");
-        current_wifi_menu_state = WIFI_MENU_NETWORK;
-        rebuild_current_menu();
-        return;
-    }
-    if (enum_list_menu) {
-        paged_menu_reset(enum_list_menu);
-    }
-    current_wifi_menu_state = WIFI_MENU_ENUM_LIST;
-    rebuild_current_menu();
-}
-
-static void enum_scan_poll_timer_cb(lv_timer_t *timer) {
-    (void)timer;
-    if (enum_scan_check_done()) {
-        lv_timer_del(enum_scan_poll_timer);
-        enum_scan_poll_timer = NULL;
-        enum_scan_finish_async();
-        if (enum_scan_cancel_requested) {
-            enum_scan_cancel_requested = false;
-            enum_scan_clear_results();
-            return;
-        }
-        enum_scan_complete_callback();
-    }
-}
-
-static void enum_scan_cancel_cleanup(void *arg) {
-    (void)arg;
-    if (enum_scan_status) {
-        scan_status_close(enum_scan_status);
-        enum_scan_status = NULL;
-    }
-    opt_touch_started = false;
-    option_fired = false;
-    display_manager_add_status_bar(options_menu_type_to_string(SelectedMenuType));
-}
-
-static void enum_scan_cancel_cb(void) {
-    if (enum_scan_cancel_requested) return;
-    enum_scan_cancel_requested = true;
-    option_input_blocked_until_us = esp_timer_get_time() + 500000;
-    enum_scan_cancel();
-    lv_async_call(enum_scan_cancel_cleanup, NULL);
-}
-
-static bool start_enum_scan_flow(void) {
-    enum_list_cleanup();
-    enum_scan_cancel_requested = false;
-    enum_scan_status = scan_status_create("Enum Scanning");
-    if (enum_scan_status) {
-        scan_status_set_subtext(enum_scan_status, "Tap to cancel");
-        scan_status_set_cancel_cb(enum_scan_status, enum_scan_cancel_cb);
-    }
-    esp_err_t err = enum_scan_start_async();
-    if (err != ESP_OK) {
-        if (enum_scan_status) {
-            scan_status_close(enum_scan_status);
-            enum_scan_status = NULL;
-        }
-        return false;
-    }
-    enum_scan_poll_timer = lv_timer_create(enum_scan_poll_timer_cb, 100, NULL);
-    return true;
-}
 
 // ============================================================================
 // Sweep Flow
@@ -3219,10 +2779,6 @@ static void scroll_options_up(lv_event_t *e) {
         detail_view_step_up(ble_gatt_detail_view);
         return;
     }
-    if (arp_detail_view && current_wifi_menu_state == WIFI_MENU_ARP_DETAILS) {
-        detail_view_step_up(arp_detail_view);
-        return;
-    }
     if (mdns_detail_view && current_wifi_menu_state == WIFI_MENU_MDNS_DETAILS) {
         detail_view_step_up(mdns_detail_view);
         return;
@@ -3256,10 +2812,6 @@ static void scroll_options_down(lv_event_t *e) {
     }
     if (ble_gatt_detail_view && current_bluetooth_menu_state == BLUETOOTH_MENU_GATT_DETAILS) {
         detail_view_step_down(ble_gatt_detail_view);
-        return;
-    }
-    if (arp_detail_view && current_wifi_menu_state == WIFI_MENU_ARP_DETAILS) {
-        detail_view_step_down(arp_detail_view);
         return;
     }
     if (mdns_detail_view && current_wifi_menu_state == WIFI_MENU_MDNS_DETAILS) {
@@ -3299,10 +2851,6 @@ static void touch_back_button_cb(lv_event_t *e) {
     }
     if (ble_gatt_detail_view && current_bluetooth_menu_state == BLUETOOTH_MENU_GATT_DETAILS) {
         ble_gatt_detail_back_cb(NULL);
-        return;
-    }
-    if (arp_detail_view && current_wifi_menu_state == WIFI_MENU_ARP_DETAILS) {
-        arp_detail_back_cb(NULL);
         return;
     }
     if (mdns_detail_view && current_wifi_menu_state == WIFI_MENU_MDNS_DETAILS) {
@@ -3358,7 +2906,6 @@ static void close_one_scan_status(scan_status_t **slot) {
 static void close_all_scan_status_overlays(void) {
     close_one_scan_status(&ap_scan_status);
     close_one_scan_status(&sta_scan_status);
-    close_one_scan_status(&arp_scan_status);
     close_one_scan_status(&mdns_scan_status);
     close_one_scan_status(&sweep_scan_status);
     if (display_manager_get_current_view() == &options_menu_view) {
@@ -3400,9 +2947,6 @@ static void options_menu_freeze_pre_lock(void) {
             resume_index = selected_station_index;
             detail_view_destroy(sta_detail_view);
             sta_detail_view = NULL;
-        } else if (arp_detail_view && current_wifi_menu_state == WIFI_MENU_ARP_DETAILS) {
-            detail_view_destroy(arp_detail_view);
-            arp_detail_view = NULL;
         } else if (mdns_detail_view && current_wifi_menu_state == WIFI_MENU_MDNS_DETAILS) {
             detail_view_destroy(mdns_detail_view);
             mdns_detail_view = NULL;
@@ -3615,23 +3159,11 @@ void options_menu_create() {
             case WIFI_MENU_CAPTURE_BROWSER:
                 options = pcap_capture_load_page();
                 break;
-            case WIFI_MENU_ARP_LIST:
-                options = arp_list_get_options();
-                break;
-            case WIFI_MENU_ARP_DETAILS:
-                options = arp_list_get_options();
-                break;
             case WIFI_MENU_MDNS_LIST:
                 options = mdns_list_get_options();
                 break;
             case WIFI_MENU_MDNS_DETAILS:
                 options = mdns_list_get_options();
-                break;
-            case WIFI_MENU_ENUM_LIST:
-                options = enum_list_get_options();
-                break;
-            case WIFI_MENU_ENUM_DETAILS:
-                options = enum_list_get_options();
                 break;
         }
         break;
@@ -3704,7 +3236,6 @@ void options_menu_create() {
             case DUALCOMM_MENU_TOOLS:    options = dual_comm_tools_options; break;
             case DUALCOMM_MENU_BLE:      options = dual_comm_ble_options; break;
             case DUALCOMM_MENU_GPS:      options = dual_comm_gps_options; break;
-            case DUALCOMM_MENU_ETHERNET: options = dual_comm_ethernet_options; break;
             case DUALCOMM_MENU_KEYBOARD: options = dual_comm_keyboard_options; break;
         }
         break;
@@ -5113,33 +4644,19 @@ void handle_hardware_button_press_options(InputEvent *event) {
     }
 #endif
 
-    bool arp_overlay_active = arp_scan_status && scan_status_is_active(arp_scan_status);
     bool mdns_overlay_active = mdns_scan_status && scan_status_is_active(mdns_scan_status);
-    bool enum_overlay_active = enum_scan_status && scan_status_is_active(enum_scan_status);
-    if (arp_overlay_active || mdns_overlay_active || enum_overlay_active) {
+    if (mdns_overlay_active) {
         if (event && event->type == INPUT_TYPE_TOUCH) {
             /* This display's raw touch path is authoritative. Cancel on press,
              * then swallow the release so it cannot activate the menu below. */
             if (event->data.touch_data.state == LV_INDEV_STATE_PR) {
-                if (arp_overlay_active) {
-                    arp_scan_cancel_cb();
-                } else if (mdns_overlay_active) {
-                    mdns_scan_cancel_cb();
-                } else {
-                    enum_scan_cancel_cb();
-                }
+                mdns_scan_cancel_cb();
             }
             opt_touch_reset();
             return;
         }
         if (should_stop_station_scan_on_input(event)) {
-            if (arp_overlay_active) {
-                arp_scan_cancel_cb();
-            } else if (mdns_overlay_active) {
-                mdns_scan_cancel_cb();
-            } else {
-                enum_scan_cancel_cb();
-            }
+            mdns_scan_cancel_cb();
         }
         return;
     }
@@ -5723,21 +5240,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
             return;
         }
 
-        if (arp_detail_view && current_wifi_menu_state == WIFI_MENU_ARP_DETAILS) {
-            if (button == 2) {
-                detail_view_step_up(arp_detail_view);
-            } else if (button == 4) {
-                detail_view_step_down(arp_detail_view);
-            } else if (button == 1) {
-                lv_obj_t *obj = detail_view_get_selected_obj(arp_detail_view);
-                if (obj && lv_obj_is_valid(obj)) {
-                    lv_event_send(obj, LV_EVENT_CLICKED, NULL);
-                }
-            } else if (button == 0 || button == 3) {
-                arp_detail_back_cb(NULL);
-            }
-            return;
-        }
 
         if (mdns_detail_view && current_wifi_menu_state == WIFI_MENU_MDNS_DETAILS) {
             if (button == 2) {
@@ -6262,17 +5764,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
             }
             return;
         }
-        if (arp_detail_view && current_wifi_menu_state == WIFI_MENU_ARP_DETAILS) {
-            if (event->data.encoder.button) {
-                lv_obj_t *obj = detail_view_get_selected_obj(arp_detail_view);
-                if (obj && lv_obj_is_valid(obj)) lv_event_send(obj, LV_EVENT_CLICKED, NULL);
-            } else if (event->data.encoder.direction < 0) {
-                detail_view_step_up(arp_detail_view);
-            } else if (event->data.encoder.direction > 0) {
-                detail_view_step_down(arp_detail_view);
-            }
-            return;
-        }
         if (mdns_detail_view && current_wifi_menu_state == WIFI_MENU_MDNS_DETAILS) {
             if (event->data.encoder.button) {
                 lv_obj_t *obj = detail_view_get_selected_obj(mdns_detail_view);
@@ -6509,11 +6000,6 @@ void option_event_cb(lv_event_t *e) {
             } else if (strcmp(Selected_Option, "GPS") == 0) {
                 current_dualcomm_menu_state = DUALCOMM_MENU_GPS;
                 rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "Ethernet") == 0) {
-                ethernet_screen_set_return_view(&options_menu_view);
-                display_manager_switch_view(&ethernet_screen_view);
                 option_invoked = false;
                 return;
             } else if (strcmp(Selected_Option, "Keyboard") == 0) {
@@ -7510,38 +6996,6 @@ void option_event_cb(lv_event_t *e) {
         return;
     }
 
-    else if (current_wifi_menu_state == WIFI_MENU_ARP_LIST) {
-        if (strcmp(Selected_Option, "No items found") == 0) {
-            option_invoked = false;
-            return;
-        }
-        if (strcmp(Selected_Option, "< Prev") == 0) {
-            paged_menu_page_prev(arp_list_menu);
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-        if (strcmp(Selected_Option, "Next >") == 0) {
-            paged_menu_page_next(arp_list_menu);
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-
-        int offset = paged_menu_get_page_offset(arp_list_menu);
-        const char **opts = paged_menu_get_options(arp_list_menu);
-        int skip = paged_menu_has_prev(arp_list_menu) ? 1 : 0;
-
-        for (int i = 0; opts[i]; i++) {
-            if (opts[i] == Selected_Option || strcmp(opts[i], Selected_Option) == 0) {
-                show_arp_detail(offset + (i - skip));
-                break;
-            }
-        }
-        option_invoked = false;
-        return;
-    }
-
     else if (current_wifi_menu_state == WIFI_MENU_MDNS_LIST) {
         if (strcmp(Selected_Option, "No items found") == 0) {
             option_invoked = false;
@@ -7567,38 +7021,6 @@ void option_event_cb(lv_event_t *e) {
         for (int i = 0; opts[i]; i++) {
             if (opts[i] == Selected_Option || strcmp(opts[i], Selected_Option) == 0) {
                 show_mdns_detail(offset + (i - skip));
-                break;
-            }
-        }
-        option_invoked = false;
-        return;
-    }
-
-    else if (current_wifi_menu_state == WIFI_MENU_ENUM_LIST) {
-        if (strcmp(Selected_Option, "No items found") == 0) {
-            option_invoked = false;
-            return;
-        }
-        if (strcmp(Selected_Option, "< Prev") == 0) {
-            paged_menu_page_prev(enum_list_menu);
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-        if (strcmp(Selected_Option, "Next >") == 0) {
-            paged_menu_page_next(enum_list_menu);
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-
-        int offset = paged_menu_get_page_offset(enum_list_menu);
-        const char **opts = paged_menu_get_options(enum_list_menu);
-        int skip = paged_menu_has_prev(enum_list_menu) ? 1 : 0;
-
-        for (int i = 0; opts[i]; i++) {
-            if (opts[i] == Selected_Option || strcmp(opts[i], Selected_Option) == 0) {
-                show_enum_detail(offset + (i - skip));
                 break;
             }
         }
@@ -7788,15 +7210,6 @@ void option_event_cb(lv_event_t *e) {
         return;
     }
 
-    else if (strcmp(Selected_Option, "ARP Scan Network") == 0) {
-        if (!start_arp_scan_flow()) {
-            error_popup_create("Scan failed to start");
-        }
-        option_invoked = false;
-        return;
-    }
-
-
     else if (strcmp(Selected_Option, "Capture Deauth") == 0) {
         terminal_set_return_view(&options_menu_view);
         display_manager_switch_view(&terminal_view);
@@ -7979,32 +7392,6 @@ void option_event_cb(lv_event_t *e) {
 #endif
     }
 
-     else if (strcmp(Selected_Option, "Spoof Selected AirTag") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("spoofairtag");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-        
-#endif
-    }
-
-    else if (strcmp(Selected_Option, "Stop Spoofing") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("stopspoof");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-        
-#endif
-    }
-
-
-
     else if (strcmp(Selected_Option, "Capture PWN") == 0) {
         terminal_set_return_view(&options_menu_view);
         display_manager_switch_view(&terminal_view);
@@ -8119,20 +7506,6 @@ void option_event_cb(lv_event_t *e) {
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "Spoof Test Drone") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("aerialspoof");
-        view_switched = true;
-    }
-
-    else if (strcmp(Selected_Option, "Stop Spoofing") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("aerialspoofstop");
-        view_switched = true;
-    }
-
     else if (strcmp(Selected_Option, "GPS Info") == 0) {
         display_manager_switch_view(&wardriving_view);
         view_switched = true;
@@ -8201,14 +7574,6 @@ void option_event_cb(lv_event_t *e) {
         display_manager_switch_view(&terminal_view);
         simulateCommand("snmpprobe");
         view_switched = true;
-    }
-
-    else if (strcmp(Selected_Option, "Enum Scan") == 0) {
-        if (!start_enum_scan_flow()) {
-            error_popup_create("Enum scan failed to start");
-        }
-        option_invoked = false;
-        return;
     }
 
     else if (strcmp(Selected_Option, "SNMP Walk") == 0) {
@@ -8468,7 +7833,6 @@ void options_menu_destroy() {
     scanall_list_cleanup();
     station_list_cleanup();
     ble_detect_list_cleanup();
-    arp_list_cleanup();
     mdns_list_cleanup();
 
     if (sweep_scan_status) {
@@ -8506,10 +7870,6 @@ void options_menu_destroy() {
     if (ble_adv_detail_view) {
         detail_view_destroy(ble_adv_detail_view);
         ble_adv_detail_view = NULL;
-    }
-    if (arp_detail_view) {
-        detail_view_destroy(arp_detail_view);
-        arp_detail_view = NULL;
     }
     if (mdns_detail_view) {
         detail_view_destroy(mdns_detail_view);
@@ -9015,7 +8375,6 @@ static const char **pcap_capture_load_page(void) {
 
     static const char *pcap_dirs[] = {
         "/mnt/ghostesp/pcaps",
-        "/mnt/ghostesp/ghostchi/pcaps",
     };
 #define PCAP_NDIRS (sizeof(pcap_dirs) / sizeof(pcap_dirs[0]))
 
@@ -9708,25 +9067,6 @@ static void ble_detect_track_cb(lv_event_t *e) {
     display_manager_switch_view(&terminal_view);
 }
 
-static void ble_detect_spoof_cb(lv_event_t *e) {
-    (void)e;
-
-    if (selected_ble_detect_index < 0 ||
-        !ble_device_detect_start_airtag_spoof(selected_ble_detect_index)) {
-        error_popup_create("Spoof failed");
-        return;
-    }
-
-    if (ble_detect_detail_view) {
-        detail_view_destroy(ble_detect_detail_view);
-        ble_detect_detail_view = NULL;
-    }
-
-    current_bluetooth_menu_state = BLUETOOTH_MENU_DETECT_LIST;
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-}
-
 static void ble_detect_detail_back_cb(lv_event_t *e) {
     (void)e;
 
@@ -9778,9 +9118,6 @@ static void show_ble_detect_detail(int device_index) {
     detail_view_add_infof(ble_detect_detail_view, "RSSI", "%d dBm", info.rssi);
     detail_view_add_info(ble_detect_detail_view, "Actions:", "");
     detail_view_add_action(ble_detect_detail_view, "Track", ble_detect_track_cb, NULL);
-    if (info.type == BLE_DETECT_DEVICE_AIRTAG) {
-        detail_view_add_action(ble_detect_detail_view, "Spoof", ble_detect_spoof_cb, NULL);
-    }
     detail_view_add_back(ble_detect_detail_view, ble_detect_detail_back_cb, NULL);
 
     current_bluetooth_menu_state = BLUETOOTH_MENU_DETECT_DETAILS;
@@ -11927,25 +11264,11 @@ static void rebuild_current_menu(void) {
                     options = pcap_capture_load_page();
                     timer_period = 25;
                     break;
-                case WIFI_MENU_ARP_LIST:
-                    options = arp_list_get_options();
-                    timer_period = 25;
-                    break;
-                case WIFI_MENU_ARP_DETAILS:
-                    options = NULL;
-                    break;
                 case WIFI_MENU_MDNS_LIST:
                     options = mdns_list_get_options();
                     timer_period = 25;
                     break;
                 case WIFI_MENU_MDNS_DETAILS:
-                    options = NULL;
-                    break;
-                case WIFI_MENU_ENUM_LIST:
-                    options = enum_list_get_options();
-                    timer_period = 25;
-                    break;
-                case WIFI_MENU_ENUM_DETAILS:
                     options = NULL;
                     break;
             }
@@ -12025,7 +11348,6 @@ static void rebuild_current_menu(void) {
                 case DUALCOMM_MENU_TOOLS:    options = dual_comm_tools_options; break;
                 case DUALCOMM_MENU_BLE:      options = dual_comm_ble_options; break;
                 case DUALCOMM_MENU_GPS:      options = dual_comm_gps_options; break;
-                case DUALCOMM_MENU_ETHERNET: options = dual_comm_ethernet_options; break;
                 case DUALCOMM_MENU_KEYBOARD: options = dual_comm_keyboard_options; break;
             }
             break;
