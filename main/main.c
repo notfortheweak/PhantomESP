@@ -643,6 +643,7 @@ static void deferred_sd_init_task(void *arg) {
 }
 
 void app_main(void) {
+    memory_debug_init();
     memory_debug_start_boot_trace();
 
 #if defined(CONFIG_USING_SPI) && defined(CONFIG_SD_SPI_CS_PIN)
@@ -972,11 +973,17 @@ void app_main(void) {
 
 #if GHOSTESP_OTA_SUPPORTED
     {
-        BaseType_t ota_task_rc = xTaskCreate(ota_background_check_task, "OTA Check", 6144, NULL,
-                                              tskIDLE_PRIORITY + 1, NULL);
-        if (ota_task_rc != pdPASS) {
-            ESP_LOGE(TAG, "Failed to create OTA background check task");
+#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
+        // Networked boards are checked by wifi_manager after GOT_IP. Keep this
+        // worker only for the Wi-Fi-less Banshee S3 GhostLink peer.
+        if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething2") == 0) {
+            BaseType_t ota_task_rc = xTaskCreate(ota_background_check_task, "OTA Check", 6144,
+                                                 NULL, tskIDLE_PRIORITY + 1, NULL);
+            if (ota_task_rc != pdPASS) {
+                ESP_LOGE(TAG, "Failed to create OTA background check task");
+            }
         }
+#endif
     }
 #endif
 
@@ -1113,6 +1120,11 @@ void app_main(void) {
 #endif
 
     ESP_LOGI(TAG, "Ghost ESP INIT complete.");
+    memory_debug_log_snapshot("app_main complete");
+    esp_err_t mem_monitor_err = memory_debug_start_periodic_monitor();
+    if (mem_monitor_err != ESP_OK) {
+        ESP_LOGW(TAG, "Periodic RAM monitor failed to start: %s", esp_err_to_name(mem_monitor_err));
+    }
     print_boot_banner();
     printf("\n");
     printf("Type 'help' for available commands\n");

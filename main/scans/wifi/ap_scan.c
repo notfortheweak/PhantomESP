@@ -34,6 +34,15 @@
 // Module tag for logging
 static const char *TAG = "APScan";
 
+void wifi_manager_configure_sta_from_settings(void);
+void wifi_manager_set_reconnect_hold(bool hold);
+
+static void restore_wifi_after_scan(void) {
+    (void)ap_manager_start_services();
+    wifi_manager_configure_sta_from_settings();
+    wifi_manager_set_reconnect_hold(false);
+}
+
 static void apply_country_for_scan(void) {
     static const struct { const char *code; uint8_t schan; uint8_t nchan; } tbl[] = {
         {"US", 1, 11}, {"GB", 1, 13}, {"JP", 1, 14}, {"AU", 1, 13}, {"CN", 1, 13}, {"01", 1, 11}
@@ -208,6 +217,7 @@ void ap_scan_start(void) {
     }
 
     blocking_scan_in_progress = true;
+    wifi_manager_set_reconnect_hold(true);
     scan_results_truncated = false;
     log_heap_status(TAG, "scan_start_pre");
     status_display_show_status("WiFi Scanning...");
@@ -296,7 +306,7 @@ void ap_scan_start(void) {
     esp_wifi_stop();
 
 cleanup:
-    ap_manager_start_services();
+    restore_wifi_after_scan();
     if (err == ESP_OK) {
         // Restore saved static color if no RGB effect is running
         if (rgb_effect_task_handle == NULL) {
@@ -322,6 +332,7 @@ esp_err_t ap_scan_start_async(void) {
     }
 
     async_scan_in_progress = true;
+    wifi_manager_set_reconnect_hold(true);
     scan_results_truncated = false;
     log_heap_status(TAG, "async_scan_start");
     status_display_show_status("WiFi Scanning...");
@@ -413,7 +424,7 @@ esp_err_t ap_scan_start_async(void) {
 
 cleanup:
     if (!async_scan_in_progress) {
-        ap_manager_start_services();
+        restore_wifi_after_scan();
     }
     return err;
 }
@@ -461,7 +472,7 @@ void ap_scan_finish_async(void) {
         printf("Failed to get AP count: %s\n", esp_err_to_name(err));
         TERMINAL_VIEW_ADD_TEXT("Failed to get AP count: %s\n", esp_err_to_name(err));
         esp_wifi_stop();
-        ap_manager_start_services();
+        restore_wifi_after_scan();
         return;
     }
 
@@ -492,7 +503,7 @@ void ap_scan_finish_async(void) {
             printf("Failed to allocate memory for AP info\n");
             ap_count = 0;
             esp_wifi_stop();
-            ap_manager_start_services();
+            restore_wifi_after_scan();
             return;
         }
 
@@ -504,7 +515,7 @@ void ap_scan_finish_async(void) {
             scanned_aps = NULL;
             ap_count = 0;
             esp_wifi_stop();
-            ap_manager_start_services();
+            restore_wifi_after_scan();
             return;
         }
 
@@ -520,7 +531,7 @@ void ap_scan_finish_async(void) {
     }
     
     esp_wifi_stop();
-    ap_manager_start_services();
+    restore_wifi_after_scan();
 
     if (rgb_effect_task_handle == NULL) {
         RGBMode mode = settings_get_rgb_mode(&G_Settings);
@@ -544,7 +555,7 @@ void ap_scan_cancel_async(void) {
     async_scan_in_progress = false;
     rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
     esp_wifi_stop();
-    ap_manager_start_services();
+    restore_wifi_after_scan();
 
     if (rgb_effect_task_handle == NULL) {
         RGBMode mode = settings_get_rgb_mode(&G_Settings);
@@ -562,9 +573,7 @@ void ap_scan_stop(void) {
 
     log_heap_status(TAG, "scan_stop_pre");
     err = esp_wifi_scan_stop();
-    if (err == ESP_ERR_WIFI_NOT_STARTED) {
-        return;
-    } else if (err != ESP_OK) {
+    if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
         printf("Failed to stop WiFi scan: %s\n", esp_err_to_name(err));
         TERMINAL_VIEW_ADD_TEXT("Failed to stop WiFi scan\n");
         return;
