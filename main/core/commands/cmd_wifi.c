@@ -121,138 +121,11 @@ void handle_list(int argc, char **argv) {
     }
 }
 
-void handle_beaconspam(int argc, char **argv) {
-    if (argc > 1 && strcmp(argv[1], "-r") == 0) {
-        glog("Starting Random beacon spam...\n");
-        wifi_manager_start_beacon(NULL);
-        status_display_show_status("Beacon Random");
-        return;
-    }
-
-    if (argc > 1 && strcmp(argv[1], "-rr") == 0) {
-        glog("Starting Rickroll beacon spam...\n");
-        wifi_manager_start_beacon("RICKROLL");
-        status_display_show_status("Beacon Rickroll");
-        return;
-    }
-
-    if (argc > 1 && strcmp(argv[1], "-l") == 0) {
-        glog("Starting AP List beacon spam...\n");
-        wifi_manager_start_beacon("APLISTMODE");
-        status_display_show_status("Beacon AP List");
-        return;
-    }
-
-    if (argc > 1) {
-        wifi_manager_start_beacon(argv[1]);
-        status_display_show_status("Custom Beacon");
-        return;
-    } else {
-        glog("Usage: beaconspam -r (for Beacon Spam Random)\n");
-        status_display_show_status("Beacon Usage");
-    }
-}
-
-void handle_stop_spam(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    wifi_manager_stop_beacon();
-    glog("Beacon Spam Stopped...\n");
-    status_display_show_status("Beacon Stopped");
-}
-
 void handle_sta_scan(int argc, char **argv) {
     (void)argc;
     (void)argv;
     wifi_manager_start_station_scan();
     status_display_show_status("Station Scan");
-}
-
-void handle_attack_cmd(int argc, char **argv) {
-    if (argc > 1) {
-        if (strcmp(argv[1], "-d") == 0) {
-            glog("Deauthentication starting...\n");
-            wifi_manager_deauth_station();
-            status_display_show_status("Deauth Start");
-            return;
-        } else if (strcmp(argv[1], "-hsd") == 0) {
-            glog("Handshake+Deauth starting...\n");
-            wifi_manager_start_handshake_deauth();
-            status_display_show_status("HS+Deauth Start");
-            return;
-        } else if (strcmp(argv[1], "-c") == 0) {
-            glog("Channel Switch attack starting...\n");
-            wifi_manager_start_channel_switch_attack();
-            status_display_show_status("CSA Attack Start");
-            return;
-        } else if (strcmp(argv[1], "-e") == 0) {
-            glog("EAPOL Logoff attack starting...\n");
-            wifi_manager_start_eapollogoff_attack();
-            status_display_show_status("EAPOL Start");
-            return;
-        } else if (strcmp(argv[1], "-s") == 0) {
-            if (argc < 3) {
-                glog("Usage: attack -s <password>\n");
-                status_display_show_status("Need Password");
-                return;
-            }
-            glog("SAE flood attack starting...\n");
-            wifi_manager_start_sae_flood(argv[2]);
-            status_display_show_status("SAE Start");
-            return;
-        } else if (strcmp(argv[1], "-g") == 0) {
-            if (argc < 4) {
-                glog("Usage: attack -g <ssid> <password>\n");
-                status_display_show_status("GTK Usage");
-                return;
-            }
-            glog("GTK Abuse test starting...\n");
-            wifi_manager_start_gtk_abuse(argv[2], argv[3]);
-            status_display_show_status("GTK Start");
-            return;
-        }
-    }
-    glog("Usage: attack -d (deauth) | attack -hsd (handshake+deauth) | attack -c (channel switch) | attack -e (EAPOL logoff) | attack -s <password> (SAE flood) | attack -g <ssid> <password> (GTK abuse)\n");
-    status_display_show_status("Attack Usage");
-}
-
-void handle_sae_flood_cmd(int argc, char **argv) {
-    if (argc < 2) {
-        glog("Usage: saeflood <password>\n");
-        return;
-    }
-    glog("Starting SAE flood attack...\n");
-    wifi_manager_start_sae_flood(argv[1]);
-    status_display_show_status("SAE Flood On");
-}
-
-void handle_stop_sae_flood_cmd(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    glog("Stopping SAE flood attack...\n");
-    wifi_manager_stop_sae_flood();
-    status_display_show_status("SAE Flood Off");
-}
-
-void handle_sae_flood_help_cmd(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    wifi_manager_sae_flood_help();
-    status_display_show_status("SAE Help");
-}
-
-void handle_stop_deauth(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    wifi_manager_stop_deauth();
-    wifi_manager_stop_deauth_station();
-    wifi_manager_stop_handshake_deauth();
-    wifi_manager_stop_eapollogoff_attack();
-    wifi_manager_stop_sae_flood();
-    wifi_manager_stop_channel_switch_attack();
-    wifi_manager_stop_gtk_abuse();
-    glog("All WiFi attacks stopped...\n");
-    status_display_show_status("Attacks Off");
 }
 
 void handle_select_cmd(int argc, char **argv) {
@@ -334,47 +207,6 @@ void handle_select_cmd(int argc, char **argv) {
 }
 
 // New beacon list command handlers
-void handle_beaconadd(int argc, char **argv) {
-    if (argc != 2) {
-        glog("Usage: beaconadd <SSID>\n");
-        status_display_show_status("BeaconAdd Use");
-        return;
-    }
-    wifi_manager_add_beacon_ssid(argv[1]);
-    status_display_show_status("Beacon Added");
-}
-
-void handle_beaconremove(int argc, char **argv) {
-    if (argc != 2) {
-        glog("Usage: beaconremove <SSID>\n");
-        status_display_show_status("BeaconRm Use");
-        return;
-    }
-    wifi_manager_remove_beacon_ssid(argv[1]);
-    status_display_show_status("Beacon Removed");
-}
-
-void handle_beaconclear(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    wifi_manager_clear_beacon_list();
-    status_display_show_status("Beacon Clear");
-}
-
-void handle_beaconshow(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    wifi_manager_show_beacon_list();
-    status_display_show_status("Beacon Show");
-}
-
-void handle_beaconspamlist(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    wifi_manager_start_beacon_list();
-    status_display_show_status("Beacon List On");
-}
-
 void handle_track_ap_cmd(int argc, char **argv) {
     (void)argc;
     (void)argv;

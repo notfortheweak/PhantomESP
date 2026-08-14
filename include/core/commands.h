@@ -29,18 +29,6 @@ void handle_track_ap_cmd(int argc, char **argv);
 void handle_track_sta_cmd(int argc, char **argv);
 
 // WiFi attacks
-void handle_attack_cmd(int argc, char **argv);
-void handle_beaconspam(int argc, char **argv);
-void handle_beaconadd(int argc, char **argv);
-void handle_beaconremove(int argc, char **argv);
-void handle_beaconclear(int argc, char **argv);
-void handle_beaconshow(int argc, char **argv);
-void handle_beaconspamlist(int argc, char **argv);
-void handle_stop_spam(int argc, char **argv);
-void handle_stop_deauth(int argc, char **argv);
-void handle_sae_flood_cmd(int argc, char **argv);
-void handle_stop_sae_flood_cmd(int argc, char **argv);
-void handle_sae_flood_help_cmd(int argc, char **argv);
 
 // Settings, time, timezone, web auth, WebUI AP, and config load
 void handle_settings_cmd(int argc, char **argv);
@@ -66,8 +54,6 @@ void handle_ble_scan_cmd(int argc, char **argv);
 void handle_ble_wardriving(int argc, char **argv);
 void handle_list_airtags_cmd(int argc, char **argv);
 void handle_select_airtag(int argc, char **argv);
-void handle_spoof_airtag(int argc, char **argv);
-void handle_stop_spoof(int argc, char **argv);
 void handle_list_flippers_cmd(int argc, char **argv);
 void handle_select_flipper_cmd(int argc, char **argv);
 void handle_list_gatt_cmd(int argc, char **argv);
@@ -75,7 +61,6 @@ void handle_select_gatt_cmd(int argc, char **argv);
 void handle_enum_gatt_cmd(int argc, char **argv);
 void handle_track_gatt_cmd(int argc, char **argv);
 void handle_list_advertisers_cmd(int argc, char **argv);
-void handle_ble_spam_cmd(int argc, char **argv);
 void handle_chameleon_cmd(int argc, char **argv);
 void ble_bridge_handle_command(int argc, char **argv);
 #endif
@@ -91,7 +76,6 @@ void handle_snmp_probe(int argc, char **argv);
 void handle_enum_scan(int argc, char **argv);
 void handle_congestion_cmd(int argc, char **argv);
 void handle_listen_probes_cmd(int argc, char **argv);
-void handle_dhcpstarve_cmd(int argc, char **argv);
 
 // Scan cancellation helpers (used by stop-all handler)
 void port_scan_cancel(void);
@@ -100,12 +84,6 @@ void netbios_scan_cancel(void);
 void http_banner_scan_cancel(void);
 void snmp_scan_cancel(void);
 
-// Portal and DNS sinkhole commands
-void handle_start_portal(int argc, char **argv);
-void stop_portal(int argc, char **argv);
-void handle_listportals(int argc, char **argv);
-void handle_evilportal(int argc, char **argv);
-void handle_sinkhole_cmd(int argc, char **argv);
 
 // GPS commands
 void handle_gps_info(int argc, char **argv);
@@ -211,7 +189,6 @@ void handle_mic_cal_cmd(int argc, char **argv);
 void handle_wigle_cmd(int argc, char **argv);
 
 // Karma commands
-void handle_karma_cmd(int argc, char **argv);
 
 // RGB and Neopixel commands
 void handle_set_rgb_mode_cmd(int argc, char **argv);
@@ -245,8 +222,6 @@ void handle_aerial_scan_cmd(int argc, char **argv);
 void handle_aerial_list_cmd(int argc, char **argv);
 void handle_aerial_track_cmd(int argc, char **argv);
 void handle_aerial_stop_cmd(int argc, char **argv);
-void handle_aerial_spoof_cmd(int argc, char **argv);
-void handle_aerial_spoof_stop_cmd(int argc, char **argv);
 void handle_flock_scan_cmd(int argc, char **argv);
 void handle_flock_list_cmd(int argc, char **argv);
 void handle_flock_stop_cmd(int argc, char **argv);

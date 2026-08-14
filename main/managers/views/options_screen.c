@@ -166,9 +166,6 @@ typedef enum {
 } ota_ui_mode_t;
 static ota_ui_mode_t ota_ui_mode = OTA_UI_MODE_NONE;
 #endif
-static char gtk_abuse_ssid[33];
-static scan_status_t *gtk_abuse_status = NULL;
-static detail_view_t *gtk_abuse_detail_view = NULL;
 static int ble_detect_last_count = -1;
 static int selected_ble_detect_index = -1;
 static int ble_adv_last_count = -1;
@@ -330,7 +327,6 @@ static void ble_gatt_detail_back_cb(lv_event_t *e);
 static void ble_gatt_track_cb(lv_event_t *e);
 static void ble_gatt_enum_cb(lv_event_t *e);
 static void show_ble_gatt_detail(int device_index);
-static void gtk_abuse_back_cb(lv_event_t *e);
 
 static int ap_multi_select_load_fn(int offset, int page_size, char names[][PAGED_MENU_NAME_MAX], bool *has_more, void *user_data);
 static void ap_multi_select_toggle(int ap_index);
@@ -370,9 +366,6 @@ static bool handle_wifi_detail_keyboard(uint8_t key_value) {
     if (ap_detail_view) {
         active_detail = ap_detail_view;
         back_cb = ap_detail_back_cb;
-    } else if (gtk_abuse_detail_view) {
-        active_detail = gtk_abuse_detail_view;
-        back_cb = gtk_abuse_back_cb;
     } else if (sta_detail_view) {
         active_detail = sta_detail_view;
         back_cb = station_detail_back_cb;
@@ -1386,26 +1379,6 @@ static bool nav_pop_wifi_detail_return(WifiMenuState *return_state_out) {
     return true;
 }
 
-static const char * const wifi_attacks_options[] = {
-    "Start Deauth Attack",
-    "Start Handshake+Deauth",
-    "Start Channel Switch Attack",
-    "Beacon Spam - Random",
-    "Beacon Spam - Rickroll",
-    "Beacon Spam - List",
-    "Start EAPOL Logoff",
-    "Start GTK Abuse",
-    "Start DHCP-Starve",
-    "Stop DHCP-Starve",
-#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-    "Start SAE Flood",
-#endif
-    "Start Karma Attack",
-    "Start Karma Attack (Custom SSIDs)",
-    "Start Karma Attack (Custom Portal)",
-    "Stop Karma Attack",       
-    NULL
-};
 
 static const char * const wifi_capture_options[] = {
     "Capture Probe", "Capture Deauth", "Capture Beacon", "Capture Raw", "Capture Eapol",
@@ -1441,28 +1414,14 @@ static void switch_to_settings_root(int root_idx);
 static void switch_to_settings_category(int cat_idx);
 static void settings_activate_row(int row_index, bool increment);
 
-static const char * const wifi_evil_portal_options[] = {
-    "Start Evil Portal", "Start Custom Evil Portal", "Stop Evil Portal", NULL
-};
 
-static const char * const wifi_dns_sinkhole_options[] = {
-    "Start Sinkhole", "Stop Sinkhole", "Sinkhole Status",
-    "Download Blocklist", "Toggle Logging", NULL
-};
 
-static const char * const wifi_dns_sinkhole_download_options[] = {
-    "Peter Lowe (3.5K ads)",
-    "OISD Basic (40K mixed)",
-    "StevenBlack (70K mixed)",
-    NULL
-};
 
 static const char * const wifi_connection_options[] = {"Connect to WiFi", "Connect to saved WiFi", "Reset AP Credentials", NULL};
 
-static const char * const wifi_misc_options[] = {"TV Cast (Dial Connect)", "Power Printer", "TP Link Test", NULL};
 
 static const char * const wifi_main_options[] = {
-    "Attacks", "Scan & Select", "Environment", "Network", "Capture", "Evil Portal", "DNS Sinkhole", "Connection", "Misc", NULL
+    "Scan & Select", "Environment", "Network", "Capture", "Connection", NULL
 };
 
 static const char * const gps_options[] = {"Start Wardriving", "Stop Wardriving", "GPS Info",
@@ -1499,7 +1458,6 @@ static const char * const dual_comm_main_options[] = {
     "Discovery / Session",
     "Scanning",
     "WiFi",
-    "Attacks",
     "Capture",
     "Tools",
     "BLE",
@@ -1567,20 +1525,6 @@ static const char * const dual_comm_wifi_options[] = {
     NULL
 };
 
-static const char * const dual_comm_attacks_options[] = {
-    "Start Deauth Attack",
-    "Start Handshake+Deauth",
-    "Start EAPOL Logoff",
-    "Start DHCP-Starve",
-    "Stop DHCP-Starve",
-#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-    "Start SAE Flood",
-#endif
-    "Start Karma Attack",
-    "Start Karma Attack (Custom SSIDs)",
-    "Stop Karma Attack",
-    NULL
-};
 
 static const char * const dual_comm_capture_options[] = {
     "Capture Deauth",
@@ -1595,12 +1539,8 @@ static const char * const dual_comm_capture_options[] = {
 };
 
 static const char * const dual_comm_tools_options[] = {
-    "Start Evil Portal",
-    "Stop Evil Portal",
     "Start Wardriving",
     "Stop Wardriving",
-    "TV Cast (Dial Connect)",
-    "Power Printer",
     "Scan SSH",
     "Toggle WebUI AP Only",
     NULL
@@ -1611,18 +1551,10 @@ static const char * const dual_comm_ble_options[] = {
     "Start AirTag Scanner",
     "List AirTags",
     "Select AirTag",
-    "Spoof Selected AirTag",
-    "Stop Spoofing",
     "Find Flippers",
     "List Flippers",
     "Select Flipper",
     "Raw BLE Scanner",
-    "BLE Spam - Apple",
-    "BLE Spam - Microsoft",
-    "BLE Spam - Samsung",
-    "BLE Spam - Google",
-    "BLE Spam - Random",
-    "Stop BLE Spam",
     NULL
 };
 
@@ -3102,9 +3034,6 @@ static void update_scroll_buttons_visibility(void) {
     } else if (sta_detail_view && current_wifi_menu_state == WIFI_MENU_STA_DETAILS) {
         target = detail_view_get_list(sta_detail_view);
         force_show = true;
-    } else if (sinkhole_detail_view && current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-        target = detail_view_get_list(sinkhole_detail_view);
-        force_show = true;
     } else if (ble_detect_detail_view && current_bluetooth_menu_state == BLUETOOTH_MENU_DETECT_DETAILS) {
         target = detail_view_get_list(ble_detect_detail_view);
         force_show = true;
@@ -3195,7 +3124,6 @@ static void dual_comm_send_kb_cb(const char *text);
 static void dual_comm_wifi_connect_kb_cb(const char *text);
 static void dual_comm_apcred_kb_cb(const char *text);
 static void dual_comm_karma_custom_ssids_cb(const char *text);
-static void karma_portal_ssids_cb(const char *input);
 static void dual_comm_dns_lookup_kb_cb(const char *text);
 static void dual_comm_traceroute_kb_cb(const char *text);
 static void dual_comm_http_request_kb_cb(const char *text);
@@ -3275,14 +3203,6 @@ static void scroll_options_up(lv_event_t *e) {
         detail_view_step_up(ap_detail_view);
         return;
     }
-    if (sinkhole_detail_view && current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-        detail_view_step_up(sinkhole_detail_view);
-        return;
-    }
-    if (gtk_abuse_detail_view) {
-        detail_view_step_up(gtk_abuse_detail_view);
-        return;
-    }
     if (sta_detail_view && current_wifi_menu_state == WIFI_MENU_STA_DETAILS) {
         detail_view_step_up(sta_detail_view);
         return;
@@ -3320,14 +3240,6 @@ static void scroll_options_down(lv_event_t *e) {
     (void)e;
     if (ap_detail_view && current_wifi_menu_state == WIFI_MENU_AP_DETAILS) {
         detail_view_step_down(ap_detail_view);
-        return;
-    }
-    if (sinkhole_detail_view && current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-        detail_view_step_down(sinkhole_detail_view);
-        return;
-    }
-    if (gtk_abuse_detail_view) {
-        detail_view_step_down(gtk_abuse_detail_view);
         return;
     }
     if (sta_detail_view && current_wifi_menu_state == WIFI_MENU_STA_DETAILS) {
@@ -3371,10 +3283,6 @@ static void touch_back_button_cb(lv_event_t *e) {
     }
     if (ap_detail_view && current_wifi_menu_state == WIFI_MENU_AP_DETAILS) {
         ap_detail_back_cb(NULL);
-        return;
-    }
-    if (sinkhole_detail_view && current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-        sinkhole_detail_back_cb(NULL);
         return;
     }
     if (sta_detail_view && current_wifi_menu_state == WIFI_MENU_STA_DETAILS) {
@@ -3457,7 +3365,6 @@ static void close_all_scan_status_overlays(void) {
         close_one_scan_status(&ble_detect_status);
         close_one_scan_status(&ble_adv_status);
         close_one_scan_status(&ble_gatt_status);
-        close_one_scan_status(&gtk_abuse_status);
     }
 #if GHOSTESP_OTA_SUPPORTED
     ota_status_close_overlay();
@@ -3493,9 +3400,6 @@ static void options_menu_freeze_pre_lock(void) {
             resume_index = selected_station_index;
             detail_view_destroy(sta_detail_view);
             sta_detail_view = NULL;
-        } else if (sinkhole_detail_view && current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-            detail_view_destroy(sinkhole_detail_view);
-            sinkhole_detail_view = NULL;
         } else if (arp_detail_view && current_wifi_menu_state == WIFI_MENU_ARP_DETAILS) {
             detail_view_destroy(arp_detail_view);
             arp_detail_view = NULL;
@@ -3523,11 +3427,6 @@ static void options_menu_freeze_pre_lock(void) {
             detail_view_destroy(ble_gatt_detail_view);
             ble_gatt_detail_view = NULL;
         }
-    } else if (gtk_abuse_detail_view) {
-        /* Gtk abuse detail is not currently routed via *_menu_state for
-         * resume; just destroy the orphan widget. */
-        detail_view_destroy(gtk_abuse_detail_view);
-        gtk_abuse_detail_view = NULL;
     }
 
     s_pending_detail_resume = resume_id;
@@ -3666,14 +3565,10 @@ void options_menu_create() {
     case OT_Wifi:
         switch (current_wifi_menu_state) {
             case WIFI_MENU_MAIN: options = wifi_main_options; break;
-            case WIFI_MENU_ATTACKS: options = wifi_attacks_options; break;
             case WIFI_MENU_SCAN_SELECT: options = wifi_scan_select_options; break;
             case WIFI_MENU_ENVIRONMENT: options = wifi_environment_options; break;
             case WIFI_MENU_NETWORK: options = wifi_network_options; break;
             case WIFI_MENU_CAPTURE: options = wifi_capture_options; break;
-            case WIFI_MENU_EVIL_PORTAL: options = wifi_evil_portal_options; break;
-            case WIFI_MENU_DNS_SINKHOLE: options = wifi_dns_sinkhole_options; break;
-            case WIFI_MENU_DNS_SINKHOLE_DOWNLOAD: options = wifi_dns_sinkhole_download_options; break;
             case WIFI_MENU_DNS_SINKHOLE_FILE_PICK:
                 options = blocklist_file_options;
                 break;
@@ -3681,7 +3576,6 @@ void options_menu_create() {
                 options = NULL;
                 break;
             case WIFI_MENU_CONNECTION: options = wifi_connection_options; break;
-            case WIFI_MENU_MISC: options = wifi_misc_options; break;
             case WIFI_MENU_EVIL_PORTAL_SELECT:
             {
                 // Portal population is now handled in rebuild_current_menu
@@ -3806,7 +3700,6 @@ void options_menu_create() {
             case DUALCOMM_MENU_SESSION:  options = dual_comm_session_options; break;
             case DUALCOMM_MENU_SCAN:     options = dual_comm_scan_options; break;
             case DUALCOMM_MENU_WIFI:     options = dual_comm_wifi_options; break;
-            case DUALCOMM_MENU_ATTACKS:  options = dual_comm_attacks_options; break;
             case DUALCOMM_MENU_CAPTURE:  options = dual_comm_capture_options; break;
             case DUALCOMM_MENU_TOOLS:    options = dual_comm_tools_options; break;
             case DUALCOMM_MENU_BLE:      options = dual_comm_ble_options; break;
@@ -5445,10 +5338,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
                     detail_view_t *active_detail_view = NULL;
                     if (ap_detail_view && opt_touch_wifi_state == WIFI_MENU_AP_DETAILS) {
                         active_detail_view = ap_detail_view;
-                    } else if (sinkhole_detail_view && opt_touch_wifi_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-                        active_detail_view = sinkhole_detail_view;
-                    } else if (gtk_abuse_detail_view) {
-                        active_detail_view = gtk_abuse_detail_view;
                     } else if (sta_detail_view && opt_touch_wifi_state == WIFI_MENU_STA_DETAILS) {
                         active_detail_view = sta_detail_view;
                     } else if (ble_detect_detail_view &&
@@ -5531,8 +5420,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
             }
             // Handle touch start for detail_view
             if ((ap_detail_view && current_wifi_menu_state == WIFI_MENU_AP_DETAILS) ||
-                (sinkhole_detail_view && current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) ||
-                gtk_abuse_detail_view ||
                 (sta_detail_view && current_wifi_menu_state == WIFI_MENU_STA_DETAILS) ||
                 (ble_detect_detail_view &&
                  current_bluetooth_menu_state == BLUETOOTH_MENU_DETECT_DETAILS) ||
@@ -5576,10 +5463,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
             detail_view_t *active_detail_view = NULL;
             if (ap_detail_view && opt_touch_wifi_state == WIFI_MENU_AP_DETAILS) {
                 active_detail_view = ap_detail_view;
-            } else if (sinkhole_detail_view && opt_touch_wifi_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-                active_detail_view = sinkhole_detail_view;
-            } else if (gtk_abuse_detail_view) {
-                active_detail_view = gtk_abuse_detail_view;
             } else if (sta_detail_view && opt_touch_wifi_state == WIFI_MENU_STA_DETAILS) {
                 active_detail_view = sta_detail_view;
             } else if (ble_detect_detail_view &&
@@ -5772,38 +5655,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
                 }
             } else if (button == 0 || button == 3) {
                 ap_detail_back_cb(NULL);
-            }
-            return;
-        }
-
-        if (sinkhole_detail_view && current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-            if (button == 2) {
-                detail_view_step_up(sinkhole_detail_view);
-            } else if (button == 4) {
-                detail_view_step_down(sinkhole_detail_view);
-            } else if (button == 1) {
-                lv_obj_t *obj = detail_view_get_selected_obj(sinkhole_detail_view);
-                if (obj && lv_obj_is_valid(obj)) {
-                    lv_event_send(obj, LV_EVENT_CLICKED, NULL);
-                }
-            } else if (button == 0 || button == 3) {
-                sinkhole_detail_back_cb(NULL);
-            }
-            return;
-        }
-
-        if (gtk_abuse_detail_view) {
-            if (button == 2) {
-                detail_view_step_up(gtk_abuse_detail_view);
-            } else if (button == 4) {
-                detail_view_step_down(gtk_abuse_detail_view);
-            } else if (button == 1) {
-                lv_obj_t *obj = detail_view_get_selected_obj(gtk_abuse_detail_view);
-                if (obj && lv_obj_is_valid(obj)) {
-                    lv_event_send(obj, LV_EVENT_CLICKED, NULL);
-                }
-            } else if (button == 0 || button == 3) {
-                gtk_abuse_back_cb(NULL);
             }
             return;
         }
@@ -6367,28 +6218,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
             }
             return;
         }
-        if (sinkhole_detail_view && current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-            if (event->data.encoder.button) {
-                lv_obj_t *obj = detail_view_get_selected_obj(sinkhole_detail_view);
-                if (obj && lv_obj_is_valid(obj)) lv_event_send(obj, LV_EVENT_CLICKED, NULL);
-            } else if (event->data.encoder.direction < 0) {
-                detail_view_step_up(sinkhole_detail_view);
-            } else if (event->data.encoder.direction > 0) {
-                detail_view_step_down(sinkhole_detail_view);
-            }
-            return;
-        }
-        if (gtk_abuse_detail_view) {
-            if (event->data.encoder.button) {
-                lv_obj_t *obj = detail_view_get_selected_obj(gtk_abuse_detail_view);
-                if (obj && lv_obj_is_valid(obj)) lv_event_send(obj, LV_EVENT_CLICKED, NULL);
-            } else if (event->data.encoder.direction < 0) {
-                detail_view_step_up(gtk_abuse_detail_view);
-            } else if (event->data.encoder.direction > 0) {
-                detail_view_step_down(gtk_abuse_detail_view);
-            }
-            return;
-        }
         if (sta_detail_view && current_wifi_menu_state == WIFI_MENU_STA_DETAILS) {
             if (event->data.encoder.button) {
                 lv_obj_t *obj = detail_view_get_selected_obj(sta_detail_view);
@@ -6497,245 +6326,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
     }
 }
 
-static void karma_custom_ssids_cb(const char *input) {
-    if (!input || strlen(input) == 0) {
-        error_popup_create("Please enter at least one SSID.");
-        return;
-    }
-
-    // Parse comma-separated SSIDs
-    const char *ssids[KARMA_MAX_SSIDS];
-    // Heap-allocate to avoid blowing the LVGL task stack (2 KB+ on-stack otherwise).
-    char *ssid_buf = malloc(33 * KARMA_MAX_SSIDS);
-    if (!ssid_buf) {
-        error_popup_create("Out of memory.");
-        return;
-    }
-    int count = 0;
-
-    // Copy input to buffer for strtok
-    strncpy(ssid_buf, input, 33 * KARMA_MAX_SSIDS - 1);
-    ssid_buf[33 * KARMA_MAX_SSIDS - 1] = '\0';
-
-    char *token = strtok(ssid_buf, ",");
-    while (token && count < KARMA_MAX_SSIDS) {
-        // Trim leading/trailing spaces
-        while (*token == ' ') token++;
-        char *end = token + strlen(token) - 1;
-        while (end > token && (*end == ' ' || *end == '\n' || *end == '\r')) {
-            *end = '\0';
-            end--;
-        }
-        if (strlen(token) > 0 && strlen(token) < 33) {
-            ssids[count++] = token;
-        }
-        token = strtok(NULL, ",");
-    }
-
-    if (count == 0) {
-        free(ssid_buf);
-        error_popup_create("No valid SSIDs entered.");
-        return;
-    }
-
-    // Set SSID list and start Karma attack
-    wifi_manager_set_karma_ssid_list(ssids, count);
-    free(ssid_buf);
-    wifi_manager_start_karma();
-
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    TERMINAL_VIEW_ADD_TEXT("Karma attack started with custom SSIDs\n");
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void gtk_abuse_back_cb(lv_event_t *e) {
-    (void)e;
-    if (gtk_abuse_is_running()) {
-        wifi_manager_stop_gtk_abuse();
-    }
-    if (gtk_abuse_status) {
-        scan_status_close(gtk_abuse_status);
-        gtk_abuse_status = NULL;
-    }
-    if (gtk_abuse_detail_view) {
-        detail_view_destroy(gtk_abuse_detail_view);
-        gtk_abuse_detail_view = NULL;
-    }
-    SelectedMenuType = OT_Wifi;
-    suppress_wifi_state_reset_once = true;
-    option_invoked = false;
-    display_manager_add_status_bar(options_menu_type_to_string(SelectedMenuType));
-#ifdef CONFIG_USE_TOUCHSCREEN
-    update_scroll_buttons_visibility();
-#endif
-    current_wifi_menu_state = WIFI_MENU_ATTACKS;
-}
-
-static void gtk_abuse_poll_timer_cb(lv_timer_t *timer) {
-    (void)timer;
-
-    if (gtk_abuse_is_running()) return;
-
-    if (timer) lv_timer_del(timer);
-
-    if (gtk_abuse_status) {
-        scan_status_close(gtk_abuse_status);
-        gtk_abuse_status = NULL;
-    }
-
-    SelectedMenuType = OT_Wifi;
-    suppress_wifi_state_reset_once = true;
-    keyboard_view_set_submit_callback(NULL);
-
-    if (menu_build_timer) {
-        lv_timer_del(menu_build_timer);
-        menu_build_timer = NULL;
-    }
-
-    if (gtk_abuse_detail_view) {
-        detail_view_destroy(gtk_abuse_detail_view);
-        gtk_abuse_detail_view = NULL;
-    }
-
-    const gtk_abuse_result_t *r = gtk_abuse_get_result();
-    gtk_abuse_detail_view = detail_view_create(lv_scr_act(), "GTK Abuse Result");
-    reserve_detail_touch_bar_space(gtk_abuse_detail_view);
-    detail_view_t *dv = gtk_abuse_detail_view;
-    bool compact_detail = use_compact_wifi_detail_layout();
-
-    detail_view_add_info(dv, "SSID", r->ssid);
-    detail_view_add_info(dv, "Target", r->gateway_ip[0] ? r->gateway_ip : "-");
-    detail_view_add_info(dv, "Valid",
-                         !r->gtk_validation_available ? "N/A" :
-                         (r->gtk_validated ? "YES" : "NO"));
-
-    if (r->isolation_broken) {
-        detail_view_add_info(dv, "Verdict", "Broken");
-        detail_view_add_info(dv, "Status", "Reply seen");
-    } else if (r->frame_injected) {
-        detail_view_add_info(dv, "Verdict", "Unconfirmed");
-        detail_view_add_info(dv, "Status", "No reply seen");
-    } else if (r->connected) {
-        detail_view_add_info(dv, "Verdict", "Failed");
-        detail_view_add_info(dv, "Status", "GTK extract failed");
-    } else {
-        detail_view_add_info(dv, "Verdict", "Failed");
-        detail_view_add_info(dv, "Status", "Connection failed");
-    }
-
-    if (!compact_detail) {
-        detail_view_add_info(dv, "Actions:", "");
-    }
-
-    detail_view_add_back(dv, gtk_abuse_back_cb, NULL);
-    current_wifi_menu_state = WIFI_MENU_ATTACKS;
-}
-
-static void gtk_abuse_password_cb(const char *input) {
-    SelectedMenuType = OT_Wifi;
-    current_wifi_menu_state = WIFI_MENU_ATTACKS;
-    suppress_wifi_state_reset_once = true;
-    display_manager_switch_view(&options_menu_view);
-
-    if (gtk_abuse_status) {
-        scan_status_close(gtk_abuse_status);
-    }
-    gtk_abuse_status = scan_status_create("GTK Abuse Test");
-    if (gtk_abuse_status) scan_status_set_subtext(gtk_abuse_status, "Connecting...");
-
-    wifi_manager_start_gtk_abuse(gtk_abuse_ssid, input ? input : "");
-    TERMINAL_VIEW_ADD_TEXT("GTK Abuse test started for %s\n", gtk_abuse_ssid);
-    keyboard_view_set_submit_callback(NULL);
-
-    lv_timer_create(gtk_abuse_poll_timer_cb, 500, NULL);
-}
-
-static void sae_flood_password_cb(const char *input) {
-    static char cmd[80];
-    snprintf(cmd, sizeof(cmd), "saeflood %s", input ? input : "");
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void gtk_abuse_ssid_cb(const char *input) {
-    if (!input || strlen(input) == 0) {
-        error_popup_create("Please enter an SSID.");
-        return;
-    }
-    strlcpy(gtk_abuse_ssid, input, sizeof(gtk_abuse_ssid));
-    keyboard_view_set_submit_callback(gtk_abuse_password_cb);
-    keyboard_view_set_placeholder("Password");
-    keyboard_view_set_initial_text("");
-}
-
-// Called after the user picks a portal file and optionally types SSIDs.
-// selected_karma_portal holds the filename chosen from the SD card list.
-static void karma_portal_ssids_cb(const char *input) {
-    if (!selected_karma_portal[0]) {
-        error_popup_create("No portal selected.");
-        return;
-    }
-
-    // Keep this off the small LVGL task stack without reserving permanent DRAM.
-    char *portal_path = malloc(320);
-    if (!portal_path) {
-        error_popup_create("Out of memory.");
-        return;
-    }
-    if (strcmp(selected_karma_portal, "default") == 0) {
-        strncpy(portal_path, "default", 320);
-    } else {
-        snprintf(portal_path, 320,
-                  "/mnt/ghostesp/evil_portal/portals/%s", selected_karma_portal);
-    }
-    wifi_manager_set_karma_portal_file(portal_path);
-
-    // Parse optional comma-separated SSIDs; blank = passive/auto mode.
-    if (input && strlen(input) > 0) {
-        const char *ssids[KARMA_MAX_SSIDS];
-        // Heap-allocate to avoid blowing the LVGL task stack (2 KB+ on-stack otherwise).
-        char *ssid_buf = malloc(33 * KARMA_MAX_SSIDS);
-        if (!ssid_buf) {
-            free(portal_path);
-            error_popup_create("Out of memory.");
-            return;
-        }
-        int count = 0;
-
-        strncpy(ssid_buf, input, 33 * KARMA_MAX_SSIDS - 1);
-        ssid_buf[33 * KARMA_MAX_SSIDS - 1] = '\0';
-
-        char *token = strtok(ssid_buf, ",");
-        while (token && count < KARMA_MAX_SSIDS) {
-            while (*token == ' ') token++;
-            char *end = token + strlen(token) - 1;
-            while (end > token && (*end == ' ' || *end == '\n' || *end == '\r')) {
-                *end = '\0';
-                end--;
-            }
-            if (strlen(token) > 0 && strlen(token) < 33) {
-                ssids[count++] = token;
-            }
-            token = strtok(NULL, ",");
-        }
-        if (count > 0) {
-            wifi_manager_set_karma_ssid_list(ssids, count);
-        }
-        free(ssid_buf);
-    }
-
-    wifi_manager_start_karma();
-
-    selected_karma_portal[0] = '\0';
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    TERMINAL_VIEW_ADD_TEXT("Karma attack started with custom portal: %s\n", portal_path);
-    free(portal_path);
-    keyboard_view_set_submit_callback(NULL);
-}
 
 void option_event_cb(lv_event_t *e) {
     if (esp_timer_get_time() < option_input_blocked_until_us) return;
@@ -7167,67 +6757,6 @@ void option_event_cb(lv_event_t *e) {
             display_manager_switch_view(&terminal_view);
             simulateCommand("commsend apenable off");
             view_switched = true;
-        } else if (strcmp(Selected_Option, "Start Deauth Attack") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend attack -d");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Start Handshake+Deauth") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend attack -hsd");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Start Channel Switch Attack") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend attack -c");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Start EAPOL Logoff") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend attack -e");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Start DHCP-Starve") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend dhcpstarve start");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Stop DHCP-Starve") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend dhcpstarve stop");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Start Karma Attack") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend karma start");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Stop Karma Attack") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend karma stop");
-            view_switched = true;
-#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-        } else if (strcmp(Selected_Option, "Start SAE Flood") == 0) {
-            keyboard_view_set_return_view(&options_menu_view);
-            keyboard_view_set_submit_callback(sae_flood_password_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("Password");
-            return;
-#endif
-        } else if (strcmp(Selected_Option, "Start Karma Attack (Custom SSIDs)") == 0) {
-            keyboard_view_set_submit_callback(dual_comm_karma_custom_ssids_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("SSID1 SSID2 SSID3");
-            return;
         } else if (strcmp(Selected_Option, "Capture Deauth") == 0) {
             terminal_set_return_view(&options_menu_view);
             terminal_set_dualcomm_filter(true);
@@ -7276,18 +6805,6 @@ void option_event_cb(lv_event_t *e) {
             display_manager_switch_view(&terminal_view);
             simulateCommand("commsend listenprobes");
             view_switched = true;
-        } else if (strcmp(Selected_Option, "Start Evil Portal") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend startportal default FreeWiFi");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Stop Evil Portal") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend stopportal");
-            view_switched = true;
         } else if (strcmp(Selected_Option, "Start Wardriving") == 0) {
             terminal_set_return_view(&options_menu_view);
             terminal_set_dualcomm_filter(true);
@@ -7299,24 +6816,6 @@ void option_event_cb(lv_event_t *e) {
             terminal_set_dualcomm_filter(true);
             display_manager_switch_view(&terminal_view);
             simulateCommand("commsend startwd -s");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "TV Cast (Dial Connect)") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend dialconnect");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Power Printer") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend powerprinter");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Scan SSH") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scanssh");
             view_switched = true;
         } else if (strcmp(Selected_Option, "Toggle WebUI AP Only") == 0) {
             terminal_set_return_view(&options_menu_view);
@@ -7365,26 +6864,6 @@ void option_event_cb(lv_event_t *e) {
 #else
             error_popup_create("Device Does not Support Bluetooth...");
 #endif
-        } else if (strcmp(Selected_Option, "Spoof Selected AirTag") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend spoofairtag");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "Stop Spoofing") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend stopspoof");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
         } else if (strcmp(Selected_Option, "Find Flippers") == 0) {
 #ifndef CONFIG_IDF_TARGET_ESP32S2
             terminal_set_return_view(&options_menu_view);
@@ -7429,65 +6908,6 @@ void option_event_cb(lv_event_t *e) {
             terminal_set_dualcomm_filter(true);
             display_manager_switch_view(&terminal_view);
             simulateCommand("commsend capture -skimmer");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "BLE Spam - Apple") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blespam -apple");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "BLE Spam - Microsoft") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blespam -ms");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "BLE Spam - Samsung") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blespam -samsung");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "BLE Spam - Google") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blespam -google");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "BLE Spam - Random") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blespam -random");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "Stop BLE Spam") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blespam -s");
             view_switched = true;
 #else
             error_popup_create("Device Does not Support Bluetooth...");
@@ -7645,15 +7065,11 @@ void option_event_cb(lv_event_t *e) {
 
     if (SelectedMenuType == OT_Wifi) {
         if (current_wifi_menu_state == WIFI_MENU_MAIN) {
-            if (strcmp(Selected_Option, "Attacks") == 0) current_wifi_menu_state = WIFI_MENU_ATTACKS;
             else if (strcmp(Selected_Option, "Scan & Select") == 0) current_wifi_menu_state = WIFI_MENU_SCAN_SELECT;
             else if (strcmp(Selected_Option, "Environment") == 0) current_wifi_menu_state = WIFI_MENU_ENVIRONMENT;
             else if (strcmp(Selected_Option, "Network") == 0) current_wifi_menu_state = WIFI_MENU_NETWORK;
             else if (strcmp(Selected_Option, "Capture") == 0) current_wifi_menu_state = WIFI_MENU_CAPTURE;
-            else if (strcmp(Selected_Option, "Evil Portal") == 0) current_wifi_menu_state = WIFI_MENU_EVIL_PORTAL;
-            else if (strcmp(Selected_Option, "DNS Sinkhole") == 0) current_wifi_menu_state = WIFI_MENU_DNS_SINKHOLE;
             else if (strcmp(Selected_Option, "Connection") == 0) current_wifi_menu_state = WIFI_MENU_CONNECTION;
-            else if (strcmp(Selected_Option, "Misc") == 0) current_wifi_menu_state = WIFI_MENU_MISC;
             rebuild_current_menu();
             option_invoked = false;
             return;
@@ -8265,38 +7681,8 @@ void option_event_cb(lv_event_t *e) {
         return;
     }
 
-    else if (strcmp(Selected_Option, "Start Deauth Attack") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        if (!scanned_aps) {
-            glog("No APs scanned. Please run 'Scan Access Points' first.\\n");
-        } else {
-            simulateCommand("attack -d");
-        }
-        view_switched = true; 
-    }
     
-    else if (strcmp(Selected_Option, "Start Handshake+Deauth") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        if (!scanned_aps) {
-            glog("No APs scanned. Please run 'Scan Access Points' first.\\n");
-        } else {
-            simulateCommand("attack -hsd");
-        }
-        view_switched = true; 
-    }
     
-    else if (strcmp(Selected_Option, "Start Channel Switch Attack") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        if (!scanned_aps) {
-            glog("No APs scanned. Please run 'Scan Access Points' first.\\n");
-        } else {
-            simulateCommand("attack -c");
-        }
-        view_switched = true; 
-    }
 
     else if (strcmp(Selected_Option, "Scan Stations") == 0) {
         if (!start_station_scan_with_ap_scan()) {
@@ -8392,19 +7778,7 @@ void option_event_cb(lv_event_t *e) {
         return;
     }
 
-    else if (strcmp(Selected_Option, "Beacon Spam - Random") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("beaconspam -r");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Beacon Spam - Rickroll") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("beaconspam -rr");
-        view_switched = true;
-    }
 
     else if (strcmp(Selected_Option, "mDNS Discovery") == 0) {
         if (!start_mdns_scan_flow()) {
@@ -8422,17 +7796,6 @@ void option_event_cb(lv_event_t *e) {
         return;
     }
 
-    else if (strcmp(Selected_Option, "Beacon Spam - List") == 0) {
-        if (scanned_aps) {
-            terminal_set_return_view(&options_menu_view);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("beaconspam -l");
-            view_switched = true;
-        } else {
-            error_popup_create("You Need to Scan AP's First...");
-            
-        }
-    }
 
     else if (strcmp(Selected_Option, "Capture Deauth") == 0) {
         terminal_set_return_view(&options_menu_view);
@@ -8492,83 +7855,6 @@ void option_event_cb(lv_event_t *e) {
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "Start EAPOL Logoff") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("attack -e");
-        view_switched = true;
-    }
-    else if (strcmp(Selected_Option, "Start GTK Abuse") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(gtk_abuse_ssid_cb);
-        display_manager_switch_view(&keyboard_view);
-        keyboard_view_set_placeholder("Network SSID");
-        return;
-    }
-#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-    else if (strcmp(Selected_Option, "Start SAE Flood") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(sae_flood_password_cb);
-        display_manager_switch_view(&keyboard_view);
-        keyboard_view_set_placeholder("Password");
-        return;
-    }
-#endif
-
-    else if (strcmp(Selected_Option, "Start Karma Attack") == 0) {
-        wifi_manager_start_karma();
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        TERMINAL_VIEW_ADD_TEXT("Karma attack started\n");
-        view_switched = true;
-    }
-    else if (strcmp(Selected_Option, "Stop Karma Attack") == 0) {
-        wifi_manager_stop_karma();
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        TERMINAL_VIEW_ADD_TEXT("Karma attack stopped\n");
-        view_switched = true;
-    }
-    else if (strcmp(Selected_Option, "Start Karma Attack (Custom SSIDs)") == 0) {
-        keyboard_view_set_submit_callback(karma_custom_ssids_cb);
-        display_manager_switch_view(&keyboard_view);
-        keyboard_view_set_placeholder("SSID1,SSID2,SSID3");
-        return;
-    }
-    else if (strcmp(Selected_Option, "Start Karma Attack (Custom Portal)") == 0) {
-        portal_page_offset = 0;
-        current_wifi_menu_state = WIFI_MENU_KARMA_PORTAL_SELECT;
-        rebuild_current_menu();
-        option_invoked = false;
-        return;
-    }
-    else if (current_wifi_menu_state == WIFI_MENU_KARMA_PORTAL_SELECT) {
-        if (strcmp(Selected_Option, "No portal files found") == 0) {
-            option_invoked = false;
-            return;
-        }
-        /* Page navigation */
-        if (strcmp(Selected_Option, "Next >") == 0) {
-            portal_page_offset += PORTAL_PAGE_SIZE;
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-        if (strcmp(Selected_Option, "< Prev") == 0) {
-            portal_page_offset -= PORTAL_PAGE_SIZE;
-            if (portal_page_offset < 0) portal_page_offset = 0;
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-        strncpy(selected_karma_portal, Selected_Option, MAX_PORTAL_NAME - 1);
-        selected_karma_portal[MAX_PORTAL_NAME - 1] = '\0';
-        keyboard_view_set_submit_callback(karma_portal_ssids_cb);
-        display_manager_switch_view(&keyboard_view);
-        keyboard_view_set_placeholder("SSIDs (comma-sep, blank=auto)");
-        return;
-    }
-
     else if (strcmp(Selected_Option, "Capture WPS") == 0) {
         terminal_set_return_view(&options_menu_view);
         display_manager_switch_view(&terminal_view);
@@ -8576,41 +7862,10 @@ void option_event_cb(lv_event_t *e) {
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "TV Cast (Dial Connect)") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("dialconnect");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Power Printer") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("powerprinter");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Start Evil Portal") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("startportal default FreeWiFi");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Stop Evil Portal") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("stopportal");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Start Custom Evil Portal") == 0) {
-        portal_page_offset = 0;
-        current_wifi_menu_state = WIFI_MENU_EVIL_PORTAL_SELECT;
-        rebuild_current_menu();
-        option_invoked = false;
-        return;
-    }
     else if (current_wifi_menu_state == WIFI_MENU_EVIL_PORTAL_SELECT) {
         /* Non-selectable placeholder */
         if (strcmp(Selected_Option, "No portal files found") == 0) {
@@ -8640,134 +7895,14 @@ void option_event_cb(lv_event_t *e) {
         return;
     }
 
-    else if (strcmp(Selected_Option, "Start Sinkhole") == 0) {
-        blocklist_page_offset = 0;
-        blocklist_free_cache();
-        const char **files = blocklist_load_page();
-        if (files && files[0]) {
-            current_wifi_menu_state = WIFI_MENU_DNS_SINKHOLE_FILE_PICK;
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-        blocklist_free_cache();
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("sinkhole start");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Stop Sinkhole") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("sinkhole stop");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Sinkhole Status") == 0) {
-        if (sinkhole_detail_view) {
-            detail_view_destroy(sinkhole_detail_view);
-            sinkhole_detail_view = NULL;
-        }
 
-        sinkhole_detail_view = detail_view_create(lv_scr_act(), "DNS Sinkhole");
-        reserve_detail_touch_bar_space(sinkhole_detail_view);
 
-        if (dns_sinkhole_is_running()) {
-            uint32_t total = 0, blocked = 0;
-            dns_sinkhole_get_stats(&total, &blocked);
 
-            detail_view_add_info(sinkhole_detail_view, "Status", "Running");
-            detail_view_add_infof(sinkhole_detail_view, "Queries", "%lu",
-                                  (unsigned long)total);
-            detail_view_add_infof(sinkhole_detail_view, "Blocked", "%lu",
-                                  (unsigned long)blocked);
-            if (total > 0) {
-                char pct[16];
-                snprintf(pct, sizeof(pct), "%.1f%%",
-                         (float)blocked * 100.0f / (float)total);
-                detail_view_add_info(sinkhole_detail_view, "Block Rate", pct);
-            }
-            detail_view_add_info(sinkhole_detail_view, "Logging",
-                                 dns_sinkhole_get_logging() ? "ON" : "OFF");
-        } else {
-            detail_view_add_info(sinkhole_detail_view, "Status", "Stopped");
-        }
 
-        detail_view_add_info(sinkhole_detail_view, "Blocklist",
-                             sd_card_exists(SINKHOLE_BLOCKLIST_PATH) ? "Present" : "None");
 
-        detail_view_add_back(sinkhole_detail_view, sinkhole_detail_back_cb, NULL);
-        current_wifi_menu_state = WIFI_MENU_DNS_SINKHOLE_DETAILS;
-#ifdef CONFIG_USE_TOUCHSCREEN
-        update_scroll_buttons_visibility();
-#endif
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Download Blocklist") == 0) {
-        current_wifi_menu_state = WIFI_MENU_DNS_SINKHOLE_DOWNLOAD;
-        rebuild_current_menu();
-        option_invoked = false;
-        return;
-    }
-
-    else if (strcmp(Selected_Option, "Toggle Logging") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("sinkhole log");
-        view_switched = true;
-    }
-
-    else if (strcmp(Selected_Option, "Peter Lowe (3.5K ads)") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("sinkhole download 1");
-        view_switched = true;
-    }
-
-    else if (strcmp(Selected_Option, "OISD Basic (40K mixed)") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("sinkhole download 2");
-        view_switched = true;
-    }
-
-    else if (strcmp(Selected_Option, "StevenBlack (70K mixed)") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("sinkhole download 3");
-        view_switched = true;
-    }
-
-    else if (current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_FILE_PICK &&
-             strcmp(Selected_Option, "Next >") == 0) {
-        blocklist_page_offset += BLOCKLIST_PAGE_SIZE;
-        blocklist_free_cache();
-        blocklist_load_page();
-        rebuild_current_menu();
-        option_invoked = false;
-        return;
-    }
-    else if (current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_FILE_PICK &&
-             strcmp(Selected_Option, "< Prev") == 0) {
-        blocklist_page_offset -= BLOCKLIST_PAGE_SIZE;
-        if (blocklist_page_offset < 0) blocklist_page_offset = 0;
-        blocklist_free_cache();
-        blocklist_load_page();
-        rebuild_current_menu();
-        option_invoked = false;
-        return;
-    }
-    else if (current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_FILE_PICK &&
-             Selected_Option && Selected_Option[0] != '\0') {
-        char cmd[300];
-        snprintf(cmd, sizeof(cmd), "sinkhole load %s", Selected_Option);
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand(cmd);
-        view_switched = true;
-    }
 
     else if (strcmp(Selected_Option, "Start Wardriving") == 0) {
         wardriving_view_set_scan_mode(true);
@@ -8877,12 +8012,6 @@ void option_event_cb(lv_event_t *e) {
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "TP Link Test") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("tplinktest");
-        view_switched = true;
-    }
 
     else if (strcmp(Selected_Option, "Raw BLE Scanner") == 0) {
 #ifndef CONFIG_IDF_TARGET_ESP32S2
@@ -9203,19 +8332,7 @@ void option_event_cb(lv_event_t *e) {
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "Start DHCP-Starve") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("dhcpstarve start");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Stop DHCP-Starve") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("dhcpstarve stop");
-        view_switched = true;
-    }
 
     else if (strcmp(Selected_Option, "Connect to WiFi") == 0) {
         keyboard_view_set_submit_callback(wifi_connect_kb_cb);
@@ -9390,10 +8507,6 @@ void options_menu_destroy() {
         detail_view_destroy(ble_adv_detail_view);
         ble_adv_detail_view = NULL;
     }
-    if (sinkhole_detail_view) {
-        detail_view_destroy(sinkhole_detail_view);
-        sinkhole_detail_view = NULL;
-    }
     if (arp_detail_view) {
         detail_view_destroy(arp_detail_view);
         arp_detail_view = NULL;
@@ -9401,10 +8514,6 @@ void options_menu_destroy() {
     if (mdns_detail_view) {
         detail_view_destroy(mdns_detail_view);
         mdns_detail_view = NULL;
-    }
-    if (gtk_abuse_detail_view) {
-        detail_view_destroy(gtk_abuse_detail_view);
-        gtk_abuse_detail_view = NULL;
     }
 
     close_all_scan_status_overlays();
@@ -9653,18 +8762,6 @@ static void back_event_cb(lv_event_t *e) {
         rebuild_current_menu();
         return;
     }
-    // If in Karma portal select submenu, go back to Attacks menu
-    if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_KARMA_PORTAL_SELECT) {
-        portal_page_offset = 0;
-        portal_free_cache();
-        selected_karma_portal[0] = '\0';
-        if (options_menu_restore_previous_state()) {
-            return;
-        }
-        current_wifi_menu_state = WIFI_MENU_ATTACKS;
-        rebuild_current_menu();
-        return;
-    }
     // If in AP details view, go back to AP list
     if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_AP_DETAILS) {
         ap_detail_back_cb(NULL);
@@ -9673,11 +8770,6 @@ static void back_event_cb(lv_event_t *e) {
     // If in station details view, go back to station list
     if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_STA_DETAILS) {
         station_detail_back_cb(NULL);
-        return;
-    }
-    // If in GTK abuse status/result view, return to the attacks menu
-    if (SelectedMenuType == OT_Wifi && (gtk_abuse_detail_view || gtk_abuse_status)) {
-        gtk_abuse_back_cb(NULL);
         return;
     }
     // If in AP list view, go back to Scan & Select menu
@@ -12756,14 +11848,10 @@ static void rebuild_current_menu(void) {
         case OT_Wifi:
             switch (current_wifi_menu_state) {
                 case WIFI_MENU_MAIN: options = wifi_main_options; break;
-                case WIFI_MENU_ATTACKS: options = wifi_attacks_options; break;
                 case WIFI_MENU_SCAN_SELECT: options = wifi_scan_select_options; break;
                 case WIFI_MENU_ENVIRONMENT: options = wifi_environment_options; break;
                 case WIFI_MENU_NETWORK: options = wifi_network_options; break;
                 case WIFI_MENU_CAPTURE: options = wifi_capture_options; break;
-                case WIFI_MENU_EVIL_PORTAL: options = wifi_evil_portal_options; break;
-                case WIFI_MENU_DNS_SINKHOLE: options = wifi_dns_sinkhole_options; break;
-                case WIFI_MENU_DNS_SINKHOLE_DOWNLOAD: options = wifi_dns_sinkhole_download_options; break;
                 case WIFI_MENU_DNS_SINKHOLE_FILE_PICK:
                     options = blocklist_file_options;
                     break;
@@ -12771,7 +11859,6 @@ static void rebuild_current_menu(void) {
                     options = NULL;
                     break;
                 case WIFI_MENU_CONNECTION: options = wifi_connection_options; break;
-                case WIFI_MENU_MISC: options = wifi_misc_options; break;
                 case WIFI_MENU_EVIL_PORTAL_SELECT:
                 {
                     /* JIT-mount on shared-SPI boards before scanning SD */
@@ -12934,7 +12021,6 @@ static void rebuild_current_menu(void) {
                 case DUALCOMM_MENU_SESSION:  options = dual_comm_session_options; break;
                 case DUALCOMM_MENU_SCAN:     options = dual_comm_scan_options; break;
                 case DUALCOMM_MENU_WIFI:     options = dual_comm_wifi_options; break;
-                case DUALCOMM_MENU_ATTACKS:  options = dual_comm_attacks_options; break;
                 case DUALCOMM_MENU_CAPTURE:  options = dual_comm_capture_options; break;
                 case DUALCOMM_MENU_TOOLS:    options = dual_comm_tools_options; break;
                 case DUALCOMM_MENU_BLE:      options = dual_comm_ble_options; break;

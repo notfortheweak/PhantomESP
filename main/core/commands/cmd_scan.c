@@ -434,23 +434,3 @@ void handle_sweep_cmd(int argc, char **argv) {
 
     sweep_start_async(wifi_seconds, ble_seconds);
 }
-
-void handle_dhcpstarve_cmd(int argc, char **argv) {
-    if (argc < 2) {
-        dhcp_starvation_help();
-        status_display_show_status("DHCP Usage");
-    } else if (strcmp(argv[1], "start") == 0) {
-        int thr = (argc >= 3) ? atoi(argv[2]) : 1;
-        dhcp_starvation_start(thr);
-        status_display_show_status("DHCP Start");
-    } else if (strcmp(argv[1], "stop") == 0) {
-        dhcp_starvation_stop();
-        status_display_show_status("DHCP Stop");
-    } else if (strcmp(argv[1], "display") == 0) {
-        dhcp_starvation_display();
-        status_display_show_status("DHCP Stats");
-    } else {
-        dhcp_starvation_help();
-        status_display_show_status("DHCP Usage");
-    }
-}

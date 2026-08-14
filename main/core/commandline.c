@@ -289,24 +289,12 @@ void register_commands() {
     register_command("scansta", handle_sta_scan);
     register_command("scanlocal", handle_ip_lookup);
     register_command("stopscan", cmd_wifi_scan_stop);
-    register_command("attack", handle_attack_cmd);
     register_command("list", handle_list);
-    register_command("beaconspam", handle_beaconspam);
-    register_command("beaconadd", handle_beaconadd);
-    register_command("beaconremove", handle_beaconremove);
-    register_command("beaconclear", handle_beaconclear);
-    register_command("beaconshow", handle_beaconshow);
-    register_command("beaconspamlist", handle_beaconspamlist);
-    register_command("stopspam", handle_stop_spam);
-    register_command("stopdeauth", handle_stop_deauth);
     register_command("select", handle_select_cmd);
     register_command("capture", handle_capture_scan);
-    register_command("startportal", handle_start_portal);
     register_command("disconnect", handle_wifi_disconnect);
     register_command("wifistatus", handle_wifi_status);
     register_command("autoreconnect", handle_wifi_autoreconnect_cmd);
-    register_command("stopportal", stop_portal);
-    register_command("sinkhole", handle_sinkhole_cmd);
     register_command("connect", handle_wifi_connection);
     register_command("dialconnect", handle_dial_command);
     register_command("powerprinter", handle_printer_command);
@@ -328,8 +316,6 @@ void register_commands() {
     register_command("congestion", handle_congestion_cmd);
     register_command("listenprobes", handle_listen_probes_cmd);
     register_command("settings", handle_settings_cmd);
-    register_command("listportals", handle_listportals);
-    register_command("evilportal", handle_evilportal);
     register_command("commdiscovery", handle_comm_discovery);
     register_command("commconnect", handle_comm_connect);
     register_command("commsend", handle_comm_send);
@@ -352,8 +338,6 @@ void register_commands() {
     register_command("blewardriving", handle_ble_wardriving);
     register_command("listairtags", handle_list_airtags_cmd);
     register_command("selectairtag", handle_select_airtag);
-    register_command("spoofairtag", handle_spoof_airtag);
-    register_command("stopspoof", handle_stop_spoof);
     register_command("chameleon", handle_chameleon_cmd);
 #endif
     register_command("crash", handle_crash);
@@ -392,20 +376,14 @@ void register_commands() {
     #ifdef CONFIG_WITH_STATUS_DISPLAY
     register_command("statusidle", handle_status_idle_cmd);
     #endif
-    register_command("dhcpstarve", handle_dhcpstarve_cmd);
-    register_command("saeflood", handle_sae_flood_cmd);
-    register_command("stopsaeflood", handle_stop_sae_flood_cmd);
-    register_command("saefloodhelp", handle_sae_flood_help_cmd);
 #if CONFIG_IDF_TARGET_ESP32C5
     register_command("setcountry", handle_setcountry);
 #endif
     register_command("webauth", handle_web_auth_cmd);
     register_command("webuiap", handle_webuiap_cmd);
 #ifndef CONFIG_IDF_TARGET_ESP32S2
-    register_command("blespam", handle_ble_spam_cmd);
 #endif
     register_command("setrgbmode", handle_set_rgb_mode_cmd);
-    register_command("karma", handle_karma_cmd);
     register_command("setneopixelbrightness", handle_set_neopixel_brightness_cmd);
     register_command("getneopixelbrightness", handle_get_neopixel_brightness_cmd);
 #ifdef CONFIG_HAS_INFRARED
@@ -448,8 +426,6 @@ void register_commands() {
     register_command("aeriallist", handle_aerial_list_cmd);
     register_command("aerialtrack", handle_aerial_track_cmd);
     register_command("aerialstop", handle_aerial_stop_cmd);
-    register_command("aerialspoof", handle_aerial_spoof_cmd);
-    register_command("aerialspoofstop", handle_aerial_spoof_stop_cmd);
     register_command("flockscan", handle_flock_scan_cmd);
     register_command("flocklist", handle_flock_list_cmd);
     register_command("flockstop", handle_flock_stop_cmd);

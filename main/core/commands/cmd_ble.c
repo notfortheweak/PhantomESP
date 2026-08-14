@@ -204,16 +204,6 @@ void handle_select_airtag(int argc, char **argv) {
     }
 }
 
-void handle_spoof_airtag(int argc, char **argv) {
-    ble_start_spoofing_selected_airtag();
-    status_display_show_status("AirTag Spoof");
-}
-
-void handle_stop_spoof(int argc, char **argv) {
-    ble_stop_spoofing();
-    status_display_show_status("Spoof Stop");
-}
-
 void handle_list_flippers_cmd(int argc, char **argv) {
     flipper_scan_print_results();
     status_display_show_status("List Flipper");
@@ -274,44 +264,6 @@ void handle_list_advertisers_cmd(int argc, char **argv) {
     status_display_show_status("List BLE Adv");
 }
 
-void handle_ble_spam_cmd(int argc, char **argv) {
-    if (argc > 1) {
-        if (strcmp(argv[1], "-apple") == 0) {
-            glog("Starting Apple BLE spam...\n");
-            ble_spam_start(BLE_SPAM_APPLE);
-            return;
-        }
-        if (strcmp(argv[1], "-ms") == 0 || strcmp(argv[1], "-microsoft") == 0) {
-            glog("Starting Microsoft BLE spam...\n");
-            ble_spam_start(BLE_SPAM_MICROSOFT);
-            return;
-        }
-        if (strcmp(argv[1], "-samsung") == 0) {
-            glog("Starting Samsung BLE spam...\n");
-            ble_spam_start(BLE_SPAM_SAMSUNG);
-            return;
-        }
-        if (strcmp(argv[1], "-google") == 0) {
-            glog("Starting Google BLE spam...\n");
-            ble_spam_start(BLE_SPAM_GOOGLE);
-            return;
-        }
-        if (strcmp(argv[1], "-random") == 0) {
-            glog("Starting Random BLE spam...\n");
-            ble_spam_start(BLE_SPAM_RANDOM);
-            return;
-        }
-        if (strcmp(argv[1], "-s") == 0) {
-            glog("Stopping BLE spam...\n");
-            ble_spam_stop();
-            return;
-        }
-    }
-    glog("Usage: blespam [-apple|-ms|-samsung|-google|-random|-s]\n");
-}
-#endif // CONFIG_IDF_TARGET_ESP32S2
-
-#ifdef CONFIG_NFC_CHAMELEON
 void handle_chameleon_cmd(int argc, char **argv) {
     if (argc < 2) {
         glog("Usage: chameleon <command>\n");

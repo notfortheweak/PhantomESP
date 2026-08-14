@@ -154,66 +154,6 @@ void handle_aerial_stop_cmd(int argc, char **argv) {
     aerial_detector_untrack_device();
 }
 
-void handle_aerial_spoof_cmd(int argc, char **argv) {
-    const char *device_id;
-    double lat;
-    double lon;
-    float alt;
-    
-    if (argc < 2) {
-        // default test mode - no args needed
-        device_id = "GHOST-TEST";
-        lat = 37.7749;   // san francisco
-        lon = -122.4194;
-        alt = 100.0f;
-        glog("Using default test drone:\n");
-        glog("Device ID: %s\n", device_id);
-        glog("Location: %.6f, %.6f @ %.1fm\n\n", lat, lon, alt);
-    } else if (argc < 5) {
-        glog("Usage: aerialspoof [device_id latitude longitude altitude]\n");
-        glog("Examples:\n");
-        glog("  aerialspoof                              # Use defaults\n");
-        glog("  aerialspoof DRONE-1234 40.7128 -74.0060 100\n");
-        glog("\nBroadcasts fake drone RemoteID for testing purposes.\n");
-        glog("Complies with ASTM F3411 OpenDroneID standard.\n");
-        return;
-    } else {
-        device_id = argv[1];
-        lat = atof(argv[2]);
-        lon = atof(argv[3]);
-        alt = atof(argv[4]);
-    }
-    
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-        glog("Invalid coordinates. Lat: -90 to 90, Lon: -180 to 180\n");
-        return;
-    }
-    
-    // stop existing spoof if running
-    if (aerial_detector_is_emulating()) {
-        aerial_detector_stop_emulation();
-    }
-    
-    aerial_detector_init();
-    esp_err_t ret = aerial_detector_start_emulation(device_id, lat, lon, alt);
-    
-    if (ret == ESP_OK) {
-        glog("Spoofing Started\n");
-        glog("ID: %s | Pos: %.6f, %.6f @ %.1fm\n", device_id, lat, lon, alt);
-    } else {
-        glog("Failed to start spoofing\n");
-    }
-}
-
-void handle_aerial_spoof_stop_cmd(int argc, char **argv) {
-    if (aerial_detector_is_emulating()) {
-        aerial_detector_stop_emulation();
-        glog("Spoofing Stopped\n");
-    } else {
-        glog("No spoofing active\n");
-    }
-}
-
 void handle_flock_scan_cmd(int argc, char **argv) {
     if (flock_detector_is_running()) {
         glog("Flock detection is already running. Use 'flockstop' to stop first.\n");
