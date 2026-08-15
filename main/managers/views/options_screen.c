@@ -3120,6 +3120,14 @@ void options_menu_create() {
                 options = NULL;
                 break;
             case WIFI_MENU_CONNECTION: options = wifi_connection_options; break;
+            case WIFI_MENU_ATTACKS:
+            case WIFI_MENU_EVIL_PORTAL:
+            case WIFI_MENU_MISC:
+            case WIFI_MENU_DNS_SINKHOLE:
+            case WIFI_MENU_DNS_SINKHOLE_DOWNLOAD:
+                // Torn-down menus (attacks/evil-portal/misc/sinkhole); fall back to main.
+                options = wifi_main_options;
+                break;
             case WIFI_MENU_EVIL_PORTAL_SELECT:
             {
                 // Portal population is now handled in rebuild_current_menu
@@ -3237,9 +3245,10 @@ void options_menu_create() {
             case DUALCOMM_MENU_BLE:      options = dual_comm_ble_options; break;
             case DUALCOMM_MENU_GPS:      options = dual_comm_gps_options; break;
             case DUALCOMM_MENU_KEYBOARD: options = dual_comm_keyboard_options; break;
+            case DUALCOMM_MENU_ATTACKS:  options = dual_comm_main_options; break; // torn down; fall back to main
         }
         break;
-    case OT_Settings: 
+    case OT_Settings:
         is_settings_mode = true;
         if (!restoring_view) {
             current_settings_root = -1;
@@ -6551,7 +6560,7 @@ void option_event_cb(lv_event_t *e) {
 
     if (SelectedMenuType == OT_Wifi) {
         if (current_wifi_menu_state == WIFI_MENU_MAIN) {
-            else if (strcmp(Selected_Option, "Scan & Select") == 0) current_wifi_menu_state = WIFI_MENU_SCAN_SELECT;
+            if (strcmp(Selected_Option, "Scan & Select") == 0) current_wifi_menu_state = WIFI_MENU_SCAN_SELECT;
             else if (strcmp(Selected_Option, "Environment") == 0) current_wifi_menu_state = WIFI_MENU_ENVIRONMENT;
             else if (strcmp(Selected_Option, "Network") == 0) current_wifi_menu_state = WIFI_MENU_NETWORK;
             else if (strcmp(Selected_Option, "Capture") == 0) current_wifi_menu_state = WIFI_MENU_CAPTURE;
@@ -11196,6 +11205,14 @@ static void rebuild_current_menu(void) {
                     options = NULL;
                     break;
                 case WIFI_MENU_CONNECTION: options = wifi_connection_options; break;
+                case WIFI_MENU_ATTACKS:
+                case WIFI_MENU_EVIL_PORTAL:
+                case WIFI_MENU_MISC:
+                case WIFI_MENU_DNS_SINKHOLE:
+                case WIFI_MENU_DNS_SINKHOLE_DOWNLOAD:
+                    // Torn-down menus (attacks/evil-portal/misc/sinkhole); fall back to main.
+                    options = wifi_main_options;
+                    break;
                 case WIFI_MENU_EVIL_PORTAL_SELECT:
                 {
                     /* JIT-mount on shared-SPI boards before scanning SD */
@@ -11349,6 +11366,7 @@ static void rebuild_current_menu(void) {
                 case DUALCOMM_MENU_BLE:      options = dual_comm_ble_options; break;
                 case DUALCOMM_MENU_GPS:      options = dual_comm_gps_options; break;
                 case DUALCOMM_MENU_KEYBOARD: options = dual_comm_keyboard_options; break;
+                case DUALCOMM_MENU_ATTACKS:  options = dual_comm_main_options; break; // torn down; fall back to main
             }
             break;
         case OT_IOButtonPresets:
