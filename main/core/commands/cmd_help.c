@@ -6,7 +6,6 @@
 #include "managers/views/terminal_screen.h"
 #include "sdkconfig.h"
 
-#include "core/network_constants.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -19,8 +18,7 @@ void handle_help(int argc, char **argv) {
 
     // List of all categories to print in order. Detection leads.
     const char *all_categories[] = {
-        "detect", "wifi", "ble", "capture", "gps", "wigle",
-        "comm", "sd", "shell", "misc"
+        "detect", "wifi", "ble", "gps", "wigle", "sd"
 #ifdef CONFIG_HAS_INFRARED
         , "ir"
 #endif
@@ -207,45 +205,6 @@ void handle_help(int argc, char **argv) {
     }
 #endif
 
-    if (strcmp(category, "capture") == 0) {
-        glog("\nCapture Commands (passive):\n\n");
-        glog("capture\n");
-        glog("    Description: Start a passive WiFi capture (requires SD Card or Flipper).\n");
-        glog("    Usage: capture [OPTION] [-channel <n>|-c <n>]\n");
-        glog("    Arguments:\n");
-        glog("        -probe     : Capture Probe packets\n");
-        glog("        -beacon    : Capture Beacon packets\n");
-        glog("        -deauth    : Capture Deauth packets (observe attacks)\n");
-        glog("        -raw       : Capture Raw packets\n");
-        glog("        -wps       : Capture WPS packets and their Auth Type\n");
-        glog("        -pwn       : Capture Pwnagotchi packets\n");
-        glog("        -eapol     : Capture EAPOL (handshake) packets\n");
-        glog("        -list      : Browse saved PCAPs with +/- hc22000 markers\n");
-        glog("        -export    : Export PCAP to hc22000 (PMKID + M2/M3)\n");
-        glog("                    Usage: capture -export <pcap-file>\n");
-        glog("        -wireshark : Stream raw PCAP to USB/UART for Wireshark\n");
-        glog("                    Usage: capture -wireshark [-c <channel>|-channel <channel>]\n");
-        glog("                    -channel <n>: Lock to specific channel (1-%d)\n", MAX_WIFI_CHANNEL);
-        glog("        -wiresharkble : Stream BLE PCAP to USB/UART for Wireshark\n");
-        #ifndef CONFIG_IDF_TARGET_ESP32S2
-        glog("        -ble       : Start BLE packet capture\n");
-        glog("        -skimmer   : Start skimmer (BLE) detection\n");
-        #endif
-        #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-        glog("        -802154    : Capture IEEE 802.15.4 packets [C5/C6]\n");
-        glog("                    Usage: capture -802154 [ch<n>|-channel <n>]\n");
-        glog("                    -channel <n>: Lock to 802.15.4 channel (11-26)\n");
-        #endif
-        glog("        -stop      : Stops the active capture\n\n");
-        glog("    -channel <n>: Lock the radio to channel <n> during the capture.\n");
-        glog("                  Accepted by: -probe, -deauth, -beacon, -raw, -eapol, -pwn, -wps, -wireshark");
-        #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-        glog(", -802154 (11-26 only)");
-        #endif
-        glog(".\n\n");
-        return;
-    }
-
     if (strcmp(category, "gps") == 0) {
         glog("\nGPS & Wardriving Commands:\n\n");
         glog("gpsinfo\n    Show GPS info.\n    Usage: gpsinfo [-s]\n\n");
@@ -269,20 +228,6 @@ void handle_help(int argc, char **argv) {
         return;
     }
 
-    if (strcmp(category, "comm") == 0) {
-        glog("\nGhostLink / Communication Commands:\n\n");
-        glog("commdiscovery\n    Check discovery status.\n    Usage: commdiscovery\n\n");
-        glog("commconnect\n    Connect to a discovered peer ESP32.\n    Usage: commconnect <peer_name>\n    Example: commconnect ESP_A1B2C3\n\n");
-        glog("commsend\n    Send a command to connected peer ESP32.\n    Usage: commsend <command> [data]\n    Example: commsend scanap\n\n");
-        glog("commstatus\n    Show communication status.\n    Usage: commstatus\n\n");
-        glog("commdisconnect\n    Disconnect from current peer.\n    Usage: commdisconnect\n\n");
-        glog("commsetpins\n    Change communication GPIO pins at runtime.\n    Usage: commsetpins <tx_pin> <rx_pin>\n    Example: commsetpins 4 5\n\n");
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        glog("blebridge\n    Start/status/stop the BLE GhostLink bridge.\n    Usage: blebridge [start|stop|status|pair <peer_name>]\n\n");
-#endif
-        return;
-    }
-
     if (strcmp(category, "sd") == 0) {
         glog("\nSD Card Commands:\n\n");
         glog("-- File Operations (machine-parsable) --\n");
@@ -301,83 +246,6 @@ void handle_help(int argc, char **argv) {
         glog("sd_pins_mmc\n    Set GPIO pins for SDMMC mode.\n    Usage: sd_pins_mmc <clk> <cmd> <d0> <d1> <d2> <d3>\n\n");
         glog("sd_pins_spi\n    Set GPIO pins for SPI mode.\n    Usage: sd_pins_spi <cs> <clk> <miso> <mosi>\n\n");
         glog("sd_save_config\n    Save pin config to NVS.\n    Usage: sd_save_config\n\n");
-        return;
-    }
-
-    if (strcmp(category, "shell") == 0) {
-        glog("\nHeadless Shell Commands:\n\n");
-        glog("echo <text>                 Print text; supports \\n and \\t escapes.\n");
-        glog("ifconfig                    Show STA and AP interfaces.\n");
-        glog("ping <host> [count]         Send ICMP echo requests.\n");
-        glog("scanlocal                   Discover hosts on the local network (mDNS).\n");
-        glog("version                     Show firmware, build, git, and IDF versions.\n");
-        glog("uuid | macaddr              Show stable device identifiers.\n");
-        glog("uptime | date               Show uptime or current time.\n");
-        glog("whoami | status             Show device identity or a system summary.\n");
-        glog("hostname [name]             View or set the prompt hostname.\n");
-        glog("color [name|0-255|off]      Set ANSI prompt color (also cli_color).\n");
-        glog("banner [on|off|status]      Control the boot banner.\n");
-        glog("clear                       Clear an ANSI terminal.\n");
-        glog("alias [name command]        Create a persistent command shortcut.\n");
-        glog("unalias <name|all>          Remove shortcuts.\n");
-        glog("history [-c]                Show or clear command history.\n");
-        glog("ps | top                   Show FreeRTOS task information.\n");
-        glog("df                         Show /mnt filesystem usage.\n");
-        glog("tail <file> [lines]         Print the end of an SD file.\n");
-        glog("grep <pattern> <file>       Filter an SD file.\n");
-        glog("source <file>               Run CLI commands from an SD file.\n");
-        glog("tee <file> <text>           Append text to an SD file and echo it.\n");
-        glog("env | export NAME=value     View or persist simple shell variables.\n");
-        glog("watch <seconds> <command>  Repeat a command; use watch stop to end it.\n");
-        glog("Unknown commands get a 'Did you mean?' suggestion automatically.\n\n");
-        return;
-    }
-
-    if (strcmp(category, "misc") == 0) {
-        glog("\nMiscellaneous Commands:\n\n");
-        glog("help\n");
-        glog("    Description: Display this help message.\n");
-        glog("    Usage: help [category]\n\n");
-#if CONFIG_ENABLE_GHOSTSCRIPT
-        glog("script\n");
-        glog("    Description: List, launch, monitor, or stop GhostScripts from the SD card.\n");
-        glog("    Usage: script list | script run <index> | script status | script stop\n\n");
-#endif
-        glog("chipinfo\n");
-        glog("    Description: Display chip information including model, revision, and features\n");
-        glog("    Usage: chipinfo\n\n");
-        glog("crash\n");
-        glog("    Description: Intentionally trigger a crash (for coredump testing).\n");
-        glog("    Usage: crash\n");
-        glog("    The device will panic and save a coredump to flash; use idf.py coredump-info to inspect.\n\n");
-#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
-        glog("coredump [dump|erase]\n");
-        glog("    Description: Read or clear coredump in flash.\n");
-        glog("    Usage: coredump        - Print summary (partition size, whether coredump present).\n");
-        glog("           coredump dump   - Stream coredump as base64; save to file and run idf.py coredump-info -c <file> on host.\n");
-        glog("           coredump erase  - Erase coredump partition (clears saved crash).\n\n");
-#endif
-        glog("timezone\n");
-        glog("    Description: Set the display timezone for the clock view.\n");
-        glog("    Usage: timezone <TZ_STRING>\n\n");
-        glog("webauth\n");
-        glog("    Description: Enable/disable web authentication.\n");
-        glog("    Usage: webauth [on|off|toggle|status]\n\n");
-        glog("statusidle\n");
-        glog("    Description: View or change the status display idle animation (status OLED only).\n");
-        glog("    Usage: statusidle [list|set <life|ghost|starfield|hud|matrix|ghosts|spiral|leaves|bouncing|0-8>]\n\n");
-        glog("settings\n");
-        glog("    Description: Manage NVS stored settings via command line\n");
-        glog("    Usage: settings <command> [arguments]\n");
-        glog("    Commands:\n");
-        glog("        list                    - List all available settings\n");
-        glog("        get <setting>           - Get current value of a setting\n");
-        glog("        set <setting> <value>   - Set a setting to a value\n");
-        glog("        reset [setting]         - Reset setting(s) to defaults\n");
-        glog("    Examples:\n");
-        glog("        settings list\n");
-        glog("        settings get ap_ssid\n");
-        glog("        settings reset\n\n");
         return;
     }
 
@@ -407,13 +275,9 @@ void handle_help(int argc, char **argv) {
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     glog("  help ble       - Bluetooth/BLE scan commands\n");
 #endif
-    glog("  help capture   - Passive packet capture (WiFi/BLE/802.15.4)\n");
     glog("  help gps       - GPS & wardriving commands\n");
     glog("  help wigle     - WiGLE upload commands\n");
-    glog("  help comm      - GhostLink / companion commands\n");
     glog("  help sd        - SD card commands\n");
-    glog("  help shell     - Headless shell commands\n");
-    glog("  help misc      - Device & system commands\n");
 #ifdef CONFIG_HAS_INFRARED
     glog("  help ir        - Infrared receive/learn commands\n");
 #endif
