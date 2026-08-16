@@ -83,10 +83,16 @@ esp_err_t memory_debug_start_periodic_monitor(void) {
         return ESP_OK;
     }
 
-    BaseType_t rc = xTaskCreateWithCaps(memory_debug_monitor_task, "mem_monitor",
-                                        MEMORY_DEBUG_MONITOR_STACK_BYTES, NULL,
-                                        tskIDLE_PRIORITY, &s_monitor_task,
-                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    BaseType_t rc = pdFAIL;
+#ifdef CONFIG_SPIRAM
+    // Only attempt a PSRAM-backed stack on boards that actually have PSRAM.
+    // Boards without it have no PSRAM heap at all, so this request would
+    // always fail and spam the global failed-alloc callback for no reason.
+    rc = xTaskCreateWithCaps(memory_debug_monitor_task, "mem_monitor",
+                             MEMORY_DEBUG_MONITOR_STACK_BYTES, NULL,
+                             tskIDLE_PRIORITY, &s_monitor_task,
+                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#endif
     if (rc != pdPASS) {
         rc = xTaskCreate(memory_debug_monitor_task, "mem_monitor",
                          MEMORY_DEBUG_MONITOR_STACK_BYTES, NULL,
