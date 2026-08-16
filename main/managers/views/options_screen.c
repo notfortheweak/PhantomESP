@@ -1060,7 +1060,6 @@ static SettingsCategory settings_categories[] = {
 #ifdef CONFIG_WITH_STATUS_DISPLAY
     {"Status Display", SETTINGS_CAT_STATUS_DISPLAY, SETTINGS_ROOT_INTERFACE, true, "CONFIG_WITH_STATUS_DISPLAY"},
 #endif
-    {"RGB", SETTINGS_CAT_LED_RGB, SETTINGS_ROOT_LIGHTS_AUDIO, false, NULL},
 #if defined(CONFIG_HAS_MIC) || defined(CONFIG_ENABLE_MIC_RGB_VISUALIZER)
     {"Microphone", SETTINGS_CAT_MIC_RGB, SETTINGS_ROOT_LIGHTS_AUDIO, true, "CONFIG_HAS_MIC or CONFIG_ENABLE_MIC_RGB_VISUALIZER"},
 #endif
@@ -1519,14 +1518,6 @@ typedef struct {
     SettingWidgetType widget;
 } SettingsItem;
 
-// RGB mode options - MIC Visualizer only available when enabled in config
-#ifdef CONFIG_ENABLE_MIC_RGB_VISUALIZER
-static const char * const rgb_mode_options[] = {"Normal", "Rainbow", "Stealth", "Knight Rider", "Red", "Green", "Blue", "Yellow", "TWH Purple", "Cyan", "Orange", "White", "Pink", "MIC Visualizer"};
-#define RGB_MODE_COUNT 14
-#else
-static const char * const rgb_mode_options[] = {"Normal", "Rainbow", "Stealth", "Knight Rider", "Red", "Green", "Blue", "Yellow", "TWH Purple", "Cyan", "Orange", "White", "Pink"};
-#define RGB_MODE_COUNT 13
-#endif
 static const char * const timeout_options[] = {"5s", "10s", "15s", "30s", "60s", "2m", "5m", "Never"};
 static const char * const theme_options[] = {"OG", "Pastel", "Dark", "Bright", "Solarized", "Monochrome", "Rose Red", "Purple", "Blue", "Orange", "Neon", "Cyberpunk", "Ocean", "Sunset", "Forest", "Cherry Blossom", "Soft Sand"};
 static const char * const bool_options[] = {"Off", "On"};
@@ -1574,9 +1565,11 @@ static const char * const timezone_values[] = {
 };
 static const int timezone_count = sizeof(timezone_values) / sizeof(timezone_values[0]);
 
+#ifdef CONFIG_LV_DISP_BACKLIGHT_PWM
 static const char * const brightness_options[] = {
     "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"
 };
+#endif
 
 #if defined(CONFIG_HAS_MIC) || defined(CONFIG_ENABLE_MIC_RGB_VISUALIZER)
 static const char * const mic_visualizer_mode_options[] = {
@@ -1631,9 +1624,6 @@ static SettingsItem settings_items[] = {
     {"Card Background", SETTING_MENU_CARD_BG, bool_options, 2, 1, SETTINGS_CAT_MENU_STYLE, false, NULL, SETTING_WIDGET_TOGGLE},
     {"Invert Carousel", SETTING_CAROUSEL_INVERT_DIRECTION, bool_options, 2, 0, SETTINGS_CAT_NAVIGATION, false, NULL, SETTING_WIDGET_TOGGLE},
     {"Touch Drag Scroll", SETTING_TOUCH_DRAG_SCROLL, bool_options, 2, 1, SETTINGS_CAT_NAVIGATION, false, NULL, SETTING_WIDGET_TOGGLE},
-
-    {"RGB Mode", SETTING_RGB_MODE, rgb_mode_options, RGB_MODE_COUNT, 0, SETTINGS_CAT_LED_RGB, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
-    {"Neopixel Brightness", SETTING_NEOPIXEL_BRIGHTNESS, brightness_options, 10, 9, SETTINGS_CAT_LED_RGB, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
 
     {"Navigation Buttons", SETTING_NAV_BUTTONS, bool_options, 2, 1, SETTINGS_CAT_NAVIGATION, false, NULL, SETTING_WIDGET_TOGGLE},
     {"Third Control", SETTING_THIRD_CONTROL, bool_options, 2, 0, SETTINGS_CAT_NAVIGATION, false, NULL, SETTING_WIDGET_TOGGLE},
@@ -3422,7 +3412,7 @@ static void load_current_settings_values(void) {
     for (int i = 0; i < sizeof(settings_items)/sizeof(settings_items[0]); i++) {
         switch (settings_items[i].setting_type) {
             case SETTING_RGB_MODE:
-                settings_items[i].current_value = settings_get_rgb_mode(&G_Settings);
+                // RGB/LED control removed; nothing to load.
                 break;
             case SETTING_DISPLAY_TIMEOUT: {
                 uint32_t timeout = settings_get_display_timeout(&G_Settings);
@@ -3512,8 +3502,7 @@ static void load_current_settings_values(void) {
                   settings_items[i].current_value = (bv < 0) ? 0 : bv; }
                 break;
             case SETTING_NEOPIXEL_BRIGHTNESS:
-                { int nv = (settings_get_neopixel_max_brightness(&G_Settings) / 10) - 1;
-                  settings_items[i].current_value = (nv < 0) ? 0 : nv; }
+                // RGB/LED control removed; nothing to load.
                 break;
             case SETTING_EPILEPSY_WARNING:
                 settings_items[i].current_value = settings_get_epilepsy_warning_enabled(&G_Settings) ? 1 : 0;
@@ -3685,9 +3674,7 @@ static void apply_setting_change(int setting_index, int new_value) {
 
     switch (item->setting_type) {
         case SETTING_RGB_MODE:
-            settings_set_rgb_mode(&G_Settings, new_value);
-            settings_restart_rgb_effect(); // Immediate visual update
-            display_manager_update_status_bar_color();
+            // RGB/LED control removed; nothing to apply.
             break;
         case SETTING_DISPLAY_TIMEOUT: {
             // Indices: 0=5s, 1=10s, 2=15s, 3=30s, 4=60s, 5=2m, 6=5m, 7=Never
@@ -3843,12 +3830,7 @@ static void apply_setting_change(int setting_index, int new_value) {
             break;
         #endif
         case SETTING_NEOPIXEL_BRIGHTNESS:
-            settings_set_neopixel_max_brightness(&G_Settings, (uint8_t)((new_value + 1) * 10));
-            if (settings_get_rgb_mode(&G_Settings) == RGB_MODE_NORMAL || 
-                settings_get_rgb_mode(&G_Settings) == RGB_MODE_STEALTH) {
-            } 
-            // Restarting the effect applies the new brightness
-            settings_restart_rgb_effect(); 
+            // RGB/LED control removed; nothing to apply.
             break;
         case SETTING_EPILEPSY_WARNING:
             settings_set_epilepsy_warning_enabled(&G_Settings, new_value == 1);

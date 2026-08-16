@@ -6,7 +6,6 @@
 
 #include "managers/flock_detector_manager.h"
 #include "managers/wifi_manager.h"
-#include "managers/rgb_manager.h"
 #include "core/glog.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
@@ -201,7 +200,6 @@ static void drain_task_fn(void *arg) {
                          flock_detector_method_str(e.method), ms, sig, e.rssi, e.channel,
                          e.ssid[0] ? " | SSID: " : "", e.ssid[0] ? e.ssid : "",
                          (idx >= 0) ? s_dets[idx].count : 0);
-                    pulse_once(&rgb_manager, 255, 255, 255);
                 }
                 if (idx >= 0 && s_cb) s_cb(&s_dets[idx], s_cb_data);
             }

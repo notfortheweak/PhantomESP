@@ -51,15 +51,6 @@ menu "Ghost ESP Options"
         help
             Define the pin for the blue color of RGB LED when not using Neopixel.
 
-    config ENABLE_MIC_RGB_VISUALIZER
-        bool "Enable MIC RGB Visualizer (receive from GhostLink peer)"
-        depends on USE_NEOPIXEL
-        default n
-        help
-            Enable the MIC RGB Visualizer mode that receives audio amplitude data
-            from a GhostLink peer device with a microphone. The peer must have
-            CONFIG_HAS_MIC enabled to transmit audio data.
-    
     endmenu
     
     menu "Display Options"
@@ -842,17 +833,10 @@ menu "Ghost ESP Options"
                     bool "SPI"
             endchoice
 
-            config NFC_CHAMELEON
-                bool "Enable Chameleon Ultra NFC"
-                default y if BT_BLE_ENABLED
-                default n
-                help
-                    Enable using Chameleon Ultra as an NFC backend over BLE.
-
             # Aggregated flag for UI and generic NFC code
             config HAS_NFC
                 bool
-                default y if NFC_PN532 || NFC_ST25R3916 || NFC_CHAMELEON
+                default y if NFC_PN532 || NFC_ST25R3916
 
             config NFC_SCL_PIN
                 int "NFC Clock Pin (SCL/SCK)"

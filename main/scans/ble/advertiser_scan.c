@@ -16,7 +16,6 @@
 #include "host/ble_hs.h"
 #include "managers/ble_manager.h"
 #include "managers/gps_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/status_display_manager.h"
 #include "nimble/ble.h"
 
@@ -119,8 +118,6 @@ static uint8_t s_advertiser_capacity = 0;
 static bool s_scan_active = false;
 static AdvertiserTrackingState s_tracking = {0};
 static AdvertiserFilter s_filter = {0};
-
-extern RGBManager_t rgb_manager;
 
 static const char *adv_event_type_to_string(uint8_t event_type) {
     switch (event_type) {
@@ -638,9 +635,6 @@ static void advertiser_scan_callback(struct ble_gap_event *event, size_t len) {
         AdvertiserDeviceInfo info;
         if (advertiser_scan_get_device(index, &info) == 0) {
             print_advertiser_line(index, &info);
-        }
-        if (s_filter.type != ADV_FILTER_NONE) {
-            rgb_manager_pulse_async(&rgb_manager, 0, 255, 255);
         }
     }
 }

@@ -352,12 +352,8 @@ void settings_set_defaults(FSettings *settings);
 
 // Optimized Persistence and Task Management
 void settings_persist_setting(SettingsType setting);
-void settings_restart_rgb_effect(void);
 
 // Getters and Setters for core settings
-void settings_set_rgb_mode(FSettings *settings, RGBMode mode);
-RGBMode settings_get_rgb_mode(const FSettings *settings);
-
 void settings_set_channel_delay(FSettings *settings, float delay_ms);
 float settings_get_channel_delay(const FSettings *settings);
 
@@ -381,9 +377,6 @@ const char *settings_get_ap_ssid(const FSettings *settings);
 
 void settings_set_ap_password(FSettings *settings, const char *password);
 const char *settings_get_ap_password(const FSettings *settings);
-
-void settings_set_rgb_speed(FSettings *settings, uint8_t speed);
-uint8_t settings_get_rgb_speed(const FSettings *settings);
 
 void settings_set_zebra_menus_enabled(FSettings *settings, bool enabled);
 bool settings_get_zebra_menus_enabled(const FSettings *settings);
@@ -439,14 +432,6 @@ const char *settings_get_sta_password(const FSettings *settings);
 // WiFi auto-reconnect on involuntary disconnect
 void settings_set_wifi_auto_reconnect(FSettings *settings, bool enabled);
 bool settings_get_wifi_auto_reconnect(const FSettings *settings);
-
-// Functions to get/set RGB pin configuration
-void settings_set_rgb_data_pin(FSettings *settings, int32_t pin);
-int32_t settings_get_rgb_data_pin(const FSettings *settings);
-void settings_set_rgb_separate_pins(FSettings *settings, int32_t red, int32_t green, int32_t blue);
-void settings_get_rgb_separate_pins(const FSettings *settings, int32_t *red, int32_t *green, int32_t *blue);
-void settings_set_rgb_led_count(FSettings *settings, uint16_t count);
-uint16_t settings_get_rgb_led_count(const FSettings *settings);
 
 void settings_set_thirds_control_enabled(FSettings *settings, bool enabled);
 bool settings_get_thirds_control_enabled(const FSettings *settings);
@@ -507,10 +492,6 @@ uint8_t settings_get_menu_layout(const FSettings *settings);
 // Carousel slide direction inversion settings
 void settings_set_carousel_invert_direction(FSettings *settings, bool enabled);
 bool settings_get_carousel_invert_direction(const FSettings *settings);
-
-// Neopixel brightness settings
-void settings_set_neopixel_max_brightness(FSettings *settings, uint8_t brightness);
-uint8_t settings_get_neopixel_max_brightness(const FSettings *settings);
 
 // Encoder direction inversion settings
 void settings_set_encoder_invert_direction(FSettings *settings, bool enabled);

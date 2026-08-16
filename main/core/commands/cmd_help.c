@@ -19,8 +19,8 @@ void handle_help(int argc, char **argv) {
 
     // List of all categories to print in order. Detection leads.
     const char *all_categories[] = {
-        "detect", "wifi", "ble", "chameleon", "capture", "gps", "wigle",
-        "comm", "sd", "led", "shell", "misc"
+        "detect", "wifi", "ble", "capture", "gps", "wigle",
+        "comm", "sd", "shell", "misc"
 #ifdef CONFIG_HAS_INFRARED
         , "ir"
 #endif
@@ -205,35 +205,6 @@ void handle_help(int argc, char **argv) {
         glog("See also: 'listairtags', 'listflippers', 'blescan -ds' (help detect).\n\n");
         return;
     }
-
-    if (strcmp(category, "chameleon") == 0) {
-        glog("\nChameleon Ultra Commands (reader / scan):\n\n");
-        glog("chameleon connect [timeout] [pin]\n");
-        glog("    Description: Connect to a Chameleon Ultra device via BLE\n");
-        glog("    Usage: chameleon connect [timeout_seconds] [pin]\n");
-        glog("    Arguments:\n");
-        glog("        timeout_seconds : Connection timeout (default: 10)\n");
-        glog("        pin            : PIN for authentication (4-6 digits, optional)\n\n");
-        glog("chameleon disconnect\n");
-        glog("    Description: Disconnect from the Chameleon Ultra device\n");
-        glog("    Usage: chameleon disconnect\n\n");
-        glog("chameleon status\n");
-        glog("    Description: Check connection status with Chameleon Ultra\n");
-        glog("    Usage: chameleon status\n\n");
-        glog("chameleon scanhf\n");
-        glog("    Description: Scan for High Frequency (HF) RFID tags\n");
-        glog("    Usage: chameleon scanhf\n\n");
-        glog("chameleon scanlf\n");
-        glog("    Description: Scan for Low Frequency (LF) RFID tags\n");
-        glog("    Usage: chameleon scanlf\n\n");
-        glog("chameleon battery\n");
-        glog("    Description: Get battery information from Chameleon Ultra\n");
-        glog("    Usage: chameleon battery\n\n");
-        glog("chameleon reader\n");
-        glog("    Description: Set Chameleon Ultra to reader mode\n");
-        glog("    Usage: chameleon reader\n\n");
-        return;
-    }
 #endif
 
     if (strcmp(category, "capture") == 0) {
@@ -330,16 +301,6 @@ void handle_help(int argc, char **argv) {
         glog("sd_pins_mmc\n    Set GPIO pins for SDMMC mode.\n    Usage: sd_pins_mmc <clk> <cmd> <d0> <d1> <d2> <d3>\n\n");
         glog("sd_pins_spi\n    Set GPIO pins for SPI mode.\n    Usage: sd_pins_spi <cs> <clk> <miso> <mosi>\n\n");
         glog("sd_save_config\n    Save pin config to NVS.\n    Usage: sd_save_config\n\n");
-        return;
-    }
-
-    if (strcmp(category, "led") == 0) {
-        glog("\nLED & RGB Commands:\n\n");
-        glog("rgbmode\n    Control LED effects (rainbow, police, strobe, knight, off)\n    Usage: rgbmode <rainbow|police|strobe|knight|off|color>\n\n");
-        glog("setrgbpins\n    Change RGB LED pins\n    Usage: setrgbpins <red> <green> <blue>\n           (use same value for all pins for single-pin LED strips)\n\n");
-        glog("setrgbcount\n    Configure how many RGB LEDs are attached\n    Usage: setrgbcount <1-512>\n\n");
-        glog("setneopixelbrightness\n    Set maximum neopixel brightness (percent)\n    Usage: setneopixelbrightness <0-100>\n\n");
-        glog("getneopixelbrightness\n    Show current neopixel max brightness (percent)\n    Usage: getneopixelbrightness\n\n");
         return;
     }
 
@@ -445,14 +406,12 @@ void handle_help(int argc, char **argv) {
     glog("  help wifi      - Wi-Fi scan & analyze commands\n");
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     glog("  help ble       - Bluetooth/BLE scan commands\n");
-    glog("  help chameleon - Chameleon Ultra RFID reader\n");
 #endif
     glog("  help capture   - Passive packet capture (WiFi/BLE/802.15.4)\n");
     glog("  help gps       - GPS & wardriving commands\n");
     glog("  help wigle     - WiGLE upload commands\n");
     glog("  help comm      - GhostLink / companion commands\n");
     glog("  help sd        - SD card commands\n");
-    glog("  help led       - LED/RGB commands\n");
     glog("  help shell     - Headless shell commands\n");
     glog("  help misc      - Device & system commands\n");
 #ifdef CONFIG_HAS_INFRARED

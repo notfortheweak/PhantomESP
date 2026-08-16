@@ -27,7 +27,6 @@
 #include "nimble/nimble_port_freertos.h"
 #include "vendor/pcap.h"
 #include <esp_mac.h>
-#include <managers/rgb_manager.h>
 #include "managers/settings_manager.h"
 #include "managers/status_display_manager.h"
 #include "esp_bt.h"
@@ -1022,8 +1021,6 @@ void ble_stop(void) {
         esp_timer_delete(flush_timer);
         flush_timer = NULL;
     }
-
-    rgb_manager_set_color(&rgb_manager, 0, 0, 0, 0, false);
 
     if (airtag_scanner_active && discovered_airtag_count > 0) {
         scan_file_t sf = SCAN_FILE_INIT;

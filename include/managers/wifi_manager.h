@@ -211,9 +211,6 @@ bool wifi_manager_is_evil_portal_active(void);
 
 void screen_music_visualizer_task(void *pvParameters);
 
-void rgb_visualizer_server_task(void *pvParameters);
-
-void animate_led_based_on_amplitude(void *pvParameters);
 extern const size_t NUM_PORTS;
 
 esp_err_t wifi_manager_start_scan_with_time(int seconds);

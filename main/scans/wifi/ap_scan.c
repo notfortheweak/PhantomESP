@@ -16,7 +16,6 @@
 #include "core/glog.h"
 #include "core/utils.h"
 #include "managers/ap_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/status_display_manager.h"
 #include "managers/views/terminal_screen.h"
@@ -79,10 +78,6 @@ static bool blocking_scan_in_progress = false;
 static bool async_scan_in_progress = false;
 static int64_t async_scan_start_time = 0;
 static bool scan_results_truncated = false;
-
-// External dependencies
-extern RGBManager_t rgb_manager;
-extern TaskHandle_t rgb_effect_task_handle;
 
 // Forward declarations
 static void sanitize_ssid_and_check_hidden(const uint8_t* input_ssid, char* output_buffer, size_t buffer_size);
@@ -279,8 +274,6 @@ void ap_scan_start(void) {
 #endif
     };
 
-    rgb_manager_set_color(&rgb_manager, -1, 50, 255, 50, false);
-
     printf("WiFi Scan started\n");
 #ifdef CONFIG_IDF_TARGET_ESP32C5
     printf("Please wait ~5 Seconds...\n");
@@ -307,16 +300,6 @@ void ap_scan_start(void) {
 
 cleanup:
     restore_wifi_after_scan();
-    if (err == ESP_OK) {
-        // Restore saved static color if no RGB effect is running
-        if (rgb_effect_task_handle == NULL) {
-            RGBMode mode = settings_get_rgb_mode(&G_Settings);
-            if (mode != RGB_MODE_RAINBOW && mode != RGB_MODE_STEALTH &&
-                mode != RGB_MODE_KNIGHT_RIDER && mode != RGB_MODE_NORMAL) {
-                rgb_manager_apply_static_from_settings();
-            }
-        }
-    }
 }
 
 #ifdef CONFIG_IDF_TARGET_ESP32C5
@@ -392,8 +375,6 @@ esp_err_t ap_scan_start_async(void) {
 #endif
     };
 
-    rgb_manager_set_color(&rgb_manager, -1, 50, 255, 50, false);
-
     printf("WiFi Scan started (async)\n");
 #ifdef CONFIG_IDF_TARGET_ESP32C5
     printf("Please wait ~5 Seconds...\n");
@@ -463,9 +444,7 @@ bool ap_scan_check_done(void) {
 
 void ap_scan_finish_async(void) {
     async_scan_in_progress = false;
-    
-    rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
-    
+
     uint16_t initial_ap_count = 0;
     esp_err_t err = esp_wifi_scan_get_ap_num(&initial_ap_count);
     if (err != ESP_OK) {
@@ -533,14 +512,6 @@ void ap_scan_finish_async(void) {
     esp_wifi_stop();
     restore_wifi_after_scan();
 
-    if (rgb_effect_task_handle == NULL) {
-        RGBMode mode = settings_get_rgb_mode(&G_Settings);
-        if (mode != RGB_MODE_RAINBOW && mode != RGB_MODE_STEALTH &&
-            mode != RGB_MODE_KNIGHT_RIDER && mode != RGB_MODE_NORMAL) {
-            rgb_manager_apply_static_from_settings();
-        }
-    }
-    
     log_heap_status(TAG, "async_scan_finished");
 }
 
@@ -553,17 +524,8 @@ void ap_scan_cancel_async(void) {
     }
 
     async_scan_in_progress = false;
-    rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
     esp_wifi_stop();
     restore_wifi_after_scan();
-
-    if (rgb_effect_task_handle == NULL) {
-        RGBMode mode = settings_get_rgb_mode(&G_Settings);
-        if (mode != RGB_MODE_RAINBOW && mode != RGB_MODE_STEALTH &&
-            mode != RGB_MODE_KNIGHT_RIDER && mode != RGB_MODE_NORMAL) {
-            rgb_manager_apply_static_from_settings();
-        }
-    }
 
     log_heap_status(TAG, "async_scan_cancelled");
 }
@@ -578,8 +540,6 @@ void ap_scan_stop(void) {
         TERMINAL_VIEW_ADD_TEXT("Failed to stop WiFi scan\n");
         return;
     }
-
-    rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
 
     uint16_t initial_ap_count = 0;
     err = esp_wifi_scan_get_ap_num(&initial_ap_count);

@@ -16,7 +16,6 @@
 #include "core/glog.h"
 #include "core/utils.h"
 #include "managers/ap_manager.h"
-#include "managers/rgb_manager.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -48,9 +47,6 @@ static bool scan_active = false;
 static esp_timer_handle_t scansta_channel_hop_timer = NULL;
 static bool scansta_hopping_active = false;
 static uint8_t scansta_current_channel = 1;
-
-// External dependencies
-extern RGBManager_t rgb_manager;
 
 // Forward declarations
 static bool station_exists(const uint8_t *station_mac, const uint8_t *ap_bssid);

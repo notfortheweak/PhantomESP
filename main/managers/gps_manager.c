@@ -18,7 +18,6 @@
 #include "core/serial_manager.h"
 #include "core/uart_share.h"
 #include "managers/status_display_manager.h"
-#include "managers/rgb_manager.h"
 #include "vendor/GPS/minmea_soft.h"
 #include "driver/gpio.h"
 #include <esp_heap_caps.h>
@@ -41,7 +40,6 @@ static TaskHandle_t gps_check_task_handle = NULL;
 static TaskHandle_t gps_soft_watchdog_task_handle = NULL;
 static bool gps_timeout_detected = false;
 static bool gps_soft_mode_active = false;
-static bool gps_soft_released_rgb_rmt = false;
 static bool gps_disabled_comm_for_conflict = false;
 static bool gps_released_serial_for_conflict = false;
 
@@ -78,8 +76,6 @@ static esp_pm_lock_handle_t gps_soft_pm_lock = NULL;
 #endif
 static void check_gps_connection_task(void *pvParameters);
 static void gps_soft_watchdog_task(void *pvParameters);
-static void gps_soft_try_release_rgb_rmt(void);
-static void gps_soft_try_reacquire_rgb_rmt(void);
 static void gps_soft_prepare_rx_pin(void);
 
 static bool gps_lifecycle_begin(const char *operation) {
@@ -311,8 +307,6 @@ static esp_err_t gps_soft_start_parser(void) {
     if (!nmea_hdl) {
         esp_err_t soft_err = minmea_soft_get_last_error();
         if (soft_err == ESP_ERR_NOT_FOUND) {
-            gps_soft_try_release_rgb_rmt();
-            gps_soft_released_rgb_rmt = true;
             nmea_hdl = minmea_soft_start(gps_soft_rx_pin, gps_soft_baud_rate);
             gps_soft_mode_active = (nmea_hdl != NULL);
         }
@@ -346,11 +340,6 @@ static esp_err_t gps_soft_restart_parser(const char *reason, const minmea_soft_s
     if (nmea_hdl) {
         minmea_soft_stop(nmea_hdl);
         nmea_hdl = NULL;
-    }
-
-    if (gps_soft_released_rgb_rmt) {
-        gps_soft_try_reacquire_rgb_rmt();
-        gps_soft_released_rgb_rmt = false;
     }
 
     esp_err_t err = gps_soft_start_parser();
@@ -614,18 +603,6 @@ static bool gps_should_use_software_rx(void) {
     return false;
 }
 
-static void gps_soft_try_release_rgb_rmt(void) {
-#if defined(CONFIG_IDF_TARGET_ESP32C5)
-    rgb_manager_rmt_release();
-#endif
-}
-
-static void gps_soft_try_reacquire_rgb_rmt(void) {
-#if defined(CONFIG_IDF_TARGET_ESP32C5)
-    rgb_manager_rmt_reacquire();
-#endif
-}
-
 nmea_parser_handle_t nmea_hdl;
 
 static bool is_valid_date(const gps_date_t *date) {
@@ -874,7 +851,6 @@ void gps_manager_init(GPSManager *manager) {
     config.uart.rx_pin = 2;
 #endif
 
-    gps_soft_released_rgb_rmt = false;
     if (gps_should_use_software_rx()) {
         gps_soft_rx_pin = (gpio_num_t)current_rx_pin;
         gps_soft_baud_rate = config.uart.baud_rate;
@@ -890,10 +866,6 @@ void gps_manager_init(GPSManager *manager) {
                      "Failed to initialize soft GPS RX (%s)",
                      esp_err_to_name(soft_err));
             glog("Soft GPS RX init failed: %s\n", esp_err_to_name(soft_err));
-            if (gps_soft_released_rgb_rmt) {
-                gps_soft_try_reacquire_rgb_rmt();
-                gps_soft_released_rgb_rmt = false;
-            }
         } else {
             ESP_LOGE(GPS_TAG, "Failed to initialize NMEA parser");
         }
@@ -1147,10 +1119,6 @@ void gps_manager_deinit(GPSManager *manager) {
         if (nmea_hdl) {
             if (gps_soft_mode_active) {
                 minmea_soft_stop(nmea_hdl);
-                if (gps_soft_released_rgb_rmt) {
-                    gps_soft_try_reacquire_rgb_rmt();
-                    gps_soft_released_rgb_rmt = false;
-                }
             } else {
                 nmea_parser_remove_handler(nmea_hdl, gps_event_handler);
                 nmea_parser_deinit(nmea_hdl);
@@ -1178,10 +1146,6 @@ void gps_manager_deinit(GPSManager *manager) {
         gps_soft_baud_rate = 0;
         status_display_show_status("GPS Deinit");
         gps_soft_mode_active = false;
-        if (gps_soft_released_rgb_rmt) {
-            gps_soft_try_reacquire_rgb_rmt();
-            gps_soft_released_rgb_rmt = false;
-        }
         gps_restore_serial_uart_if_released();
         if (!gps_should_preserve_dualcomm() || gps_disabled_comm_for_conflict) {
             esp_comm_manager_init_with_defaults();

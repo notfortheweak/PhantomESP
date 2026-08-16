@@ -1444,25 +1444,6 @@ static esp_err_t api_settings_handler(httpd_req_t *req) {
         }
     }
 
-    cJSON *rgb_mode = cJSON_GetObjectItem(root, "rainbow_mode");
-    if (cJSON_IsBool(rgb_mode)) {
-        bool rgb_mode_value = cJSON_IsTrue(rgb_mode);
-        printf("Debug: Passed rgb_mode_value = %d to settings_set_rgb_mode()\n", rgb_mode_value);
-        settings_set_rgb_mode(settings, (RGBMode)rgb_mode_value);
-    } else {
-        glog("Error: 'rgb_mode' is not a boolean.\n");
-    }
-
-    cJSON *rgb_speed = cJSON_GetObjectItem(root, "rgb_speed");
-    if (rgb_speed) {
-        settings_set_rgb_speed(settings, rgb_speed->valueint);
-    }
-
-    cJSON *neopixel_brightness = cJSON_GetObjectItem(root, "neopixel_brightness");
-    if (neopixel_brightness) {
-        settings_set_neopixel_max_brightness(settings, (uint8_t)neopixel_brightness->valueint);
-    }
-
     cJSON *channel_delay = cJSON_GetObjectItem(root, "channel_delay");
     if (channel_delay) {
         settings_set_channel_delay(settings, (float)channel_delay->valuedouble);
@@ -1602,8 +1583,6 @@ static esp_err_t api_settings_get_handler(httpd_req_t *req) {
     cJSON_AddNumberToObject(root, "broadcast_speed", settings_get_broadcast_speed(settings));
     cJSON_AddStringToObject(root, "ap_ssid", settings_get_ap_ssid(settings));
     cJSON_AddStringToObject(root, "ap_password", "");
-    cJSON_AddNumberToObject(root, "rgb_mode", settings_get_rgb_mode(settings));
-    cJSON_AddNumberToObject(root, "rgb_speed", settings_get_rgb_speed(settings));
     cJSON_AddNumberToObject(root, "channel_delay", settings_get_channel_delay(settings));
 
     cJSON_AddStringToObject(root, "portal_url", settings_get_portal_url(settings));

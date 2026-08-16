@@ -495,6 +495,5 @@ esp_err_t settings_backup_import_from_sd(void) {
 
 void settings_backup_apply_runtime_after_import(void) {
   wifi_manager_configure_sta_from_settings();
-  settings_restart_rgb_effect();
   display_manager_update_status_bar_color();
 }

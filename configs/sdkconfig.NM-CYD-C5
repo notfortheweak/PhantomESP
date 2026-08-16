@@ -1205,7 +1205,6 @@ CONFIG_USE_TOUCHSCREEN=y
 # NFC Options
 #
 # CONFIG_NFC_PN532 is not set
-CONFIG_NFC_CHAMELEON=y
 # default:
 CONFIG_HAS_NFC=y
 # end of NFC Options

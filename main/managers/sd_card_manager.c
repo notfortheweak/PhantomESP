@@ -1591,7 +1591,7 @@ esp_err_t sd_card_setup_directory_structure() {
   const char *evil_portal_dir = SD_GHOSTESP_ROOT "/evil_portal";
   const char *evil_portal_portals_dir = SD_GHOSTESP_ROOT "/evil_portal/portals";
   const char *universals_dir = SD_GHOSTESP_ROOT "/infrared/universals";
-#if defined(CONFIG_NFC_PN532) || defined(CONFIG_NFC_CHAMELEON)
+#if defined(CONFIG_NFC_PN532)
   const char *nfc_dir = "/mnt/ghostesp/nfc";
 #endif
 
@@ -1672,7 +1672,7 @@ esp_err_t sd_card_setup_directory_structure() {
   ret = ensure_sd_dir_exists(universals_dir);
   if (ret != ESP_OK) return ret;
 
-#if defined(CONFIG_NFC_PN532) || defined(CONFIG_NFC_CHAMELEON)
+#if defined(CONFIG_NFC_PN532)
   ret = ensure_sd_dir_exists(nfc_dir);
   if (ret != ESP_OK) return ret;
 #endif

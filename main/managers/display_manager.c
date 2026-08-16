@@ -47,7 +47,6 @@
 #include "managers/wifi_manager.h"
 #include "core/serial_manager.h"
 #include "managers/wifi_manager.h"
-#include "managers/rgb_manager.h"
 #include "driver/i2c_master.h"
 #include "soc/soc_caps.h"
 #include "io_manager/i2c_bus_lock.h"
@@ -1373,12 +1372,10 @@ void apply_power_management_config(bool power_save_enabled) {
       .light_sleep_enable = power_save_enabled, // Keep light sleep for other configs
 #endif
   };
-  rgb_manager_power_transition_begin();
   esp_err_t pm_err = esp_pm_configure(&pm_cfg);
   if (pm_err != ESP_OK) {
     ESP_LOGW(TAG, "pm configure failed: %s", esp_err_to_name(pm_err));
   }
-  rgb_manager_power_transition_end();
 
 #if defined(CONFIG_LV_DISP_BACKLIGHT_PWM)
   // Reconfigure LEDC timer after power management changes to maintain stable PWM

@@ -4,7 +4,6 @@
 #include "lvgl.h"
 #include "managers/display_manager.h"
 #include "mbedtls/base64.h"  // For base64 decoding
-#include "managers/rgb_manager.h"
 #include <esp_log.h>
 #include <string.h>
 #include <time.h>
@@ -919,87 +918,6 @@ void settings_load(FSettings *settings) {
   }
 }
 
-static void update_rainbow_effect(const FSettings *settings) {
-#ifndef CONFIG_WITH_SCREEN
-  return;
-#endif
-
-  if (settings_get_rgb_mode(settings) == RGB_MODE_RAINBOW) {
-    display_manager_set_rainbow_mode(true);
-  } else {
-    display_manager_set_rainbow_mode(false);
-  }
-}
-
-
-void settings_restart_rgb_effect(void) {
-    ESP_LOGI(TAG, "Restarting RGB effect...");
-    
-    // 1. Signal any existing task to stop
-    // 1. Signal any existing task to stop
-    if (rgb_effect_task_handle != NULL) {
-        rgb_manager_signal_rainbow_exit();
-        vTaskDelay(pdMS_TO_TICKS(50));
-
-        rgb_effect_task_handle = NULL;
-    }
-    
-    // Force cleanup of status bar rainbow effect if we are switching away from RAINBOW
-    // Use the *new* value directly from G_Settings to be sure.
-    if (settings_get_rgb_mode(&G_Settings) != RGB_MODE_RAINBOW) {
-        // We call update_rainbow_effect to ensure the timer is deleted
-        update_rainbow_effect(&G_Settings);
-        // And explicitly force the status bar color update just in case
-        display_manager_update_status_bar_color();
-    }
-
-    // 4. Start new task based on mode
-    RGBMode mode = settings_get_rgb_mode(&G_Settings);
-    if (mode == RGB_MODE_RAINBOW) {
-#if RGB_EFFECT_USE_PINNED_API
-        xTaskCreatePinnedToCore(rainbow_task, "Rainbow Task", 3072, &rgb_manager,
-                                RGB_EFFECT_TASK_PRIORITY, &rgb_effect_task_handle,
-                                RGB_EFFECT_TASK_CORE);
-#else
-        xTaskCreate(rainbow_task, "Rainbow Task", 3072, &rgb_manager,
-                    RGB_EFFECT_TASK_PRIORITY, &rgb_effect_task_handle);
-#endif
-    } else if (mode == RGB_MODE_KNIGHT_RIDER) {
-         xTaskCreate(knightrider_task, "Knight Rider Task", 3072, &rgb_manager,
-                    RGB_EFFECT_TASK_PRIORITY, &rgb_effect_task_handle);
-    } else if (mode == RGB_MODE_STEALTH) {
-        rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
-    } else if (mode == RGB_MODE_RED) {
-        rgb_manager_set_color(&rgb_manager, -1, 255, 0, 0, false);
-    } else if (mode == RGB_MODE_GREEN) {
-        rgb_manager_set_color(&rgb_manager, -1, 0, 255, 0, false);
-    } else if (mode == RGB_MODE_BLUE) {
-        rgb_manager_set_color(&rgb_manager, -1, 0, 0, 255, false);
-    } else if (mode == RGB_MODE_YELLOW) {
-        rgb_manager_set_color(&rgb_manager, -1, 255, 255, 0, false);
-    } else if (mode == RGB_MODE_PURPLE) {
-        rgb_manager_set_color(&rgb_manager, -1, 115, 0, 225, false);
-    } else if (mode == RGB_MODE_CYAN) {
-        rgb_manager_set_color(&rgb_manager, -1, 0, 255, 255, false);
-    } else if (mode == RGB_MODE_ORANGE) {
-        rgb_manager_set_color(&rgb_manager, -1, 255, 165, 0, false);
-    } else if (mode == RGB_MODE_WHITE) {
-        rgb_manager_set_color(&rgb_manager, -1, 255, 255, 255, false);
-    } else if (mode == RGB_MODE_PINK) {
-        rgb_manager_set_color(&rgb_manager, -1, 255, 192, 203, false);
-    } else if (mode == RGB_MODE_MIC_VISUALIZER) {
-        // MIC visualizer mode - LEDs are controlled by GhostLink stream
-        // Just clear LEDs here, the stream handler will take over
-        rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
-        ESP_LOGI(TAG, "RGB Mode: MIC Visualizer (controlled via GhostLink)");
-    } else {
-        // Normal mode
-        rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
-    }
-
-    update_rainbow_effect(&G_Settings); // Start/stop global timer for status bar if needed
-}
-
 void settings_persist_setting(SettingsType setting) {
     esp_err_t err = ESP_OK;
     const char *key = NULL;
@@ -1318,20 +1236,12 @@ void settings_persist_setting(SettingsType setting) {
 }
 
 // Core Settings Getters and Setters
-void settings_set_rgb_mode(FSettings *settings, RGBMode mode) {
-  settings->rgb_mode = mode;
-}
-
 void settings_set_rts_enabled(FSettings *settings, bool enabled) {
   settings->rts_enabled = enabled;
 }
 
 bool settings_get_rts_enabled(const FSettings *settings) {
   return settings->rts_enabled;
-}
-
-RGBMode settings_get_rgb_mode(const FSettings *settings) {
-  return settings->rgb_mode;
 }
 
 void settings_set_channel_delay(FSettings *settings, float delay_ms) {
@@ -1565,14 +1475,6 @@ uint32_t settings_get_gps_baud_rate(const FSettings *settings) {
   return settings->gps_baud_rate;
 }
 
-void settings_set_rgb_speed(FSettings *settings, uint8_t speed) {
-  settings->rgb_speed = speed;
-}
-
-uint8_t settings_get_rgb_speed(const FSettings *settings) {
-  return settings->rgb_speed;
-}
-
 // Evil Portal Getters and Setters
 void settings_set_portal_url(FSettings *settings, const char *url) {
   strncpy(settings->portal_url, url, sizeof(settings->portal_url) - 1);
@@ -1696,34 +1598,6 @@ void settings_set_sta_password(FSettings *settings, const char *password) {
 
 const char *settings_get_sta_password(const FSettings *settings) {
   return settings->sta_password;
-}
-
-void settings_set_rgb_data_pin(FSettings *settings, int32_t pin) {
-  settings->rgb_data_pin = pin;
-}
-
-int32_t settings_get_rgb_data_pin(const FSettings *settings) {
-  return settings->rgb_data_pin;
-}
-
-void settings_set_rgb_separate_pins(FSettings *settings, int32_t red, int32_t green, int32_t blue) {
-  settings->rgb_red_pin = red;
-  settings->rgb_green_pin = green;
-  settings->rgb_blue_pin = blue;
-}
-
-void settings_get_rgb_separate_pins(const FSettings *settings, int32_t *red, int32_t *green, int32_t *blue) {
-  if (red) *red = settings->rgb_red_pin;
-  if (green) *green = settings->rgb_green_pin;
-  if (blue) *blue = settings->rgb_blue_pin;
-}
-
-void settings_set_rgb_led_count(FSettings *settings, uint16_t count) {
-  settings->rgb_led_count = count;
-}
-
-uint16_t settings_get_rgb_led_count(const FSettings *settings) {
-  return settings->rgb_led_count;
 }
 
 void settings_set_thirds_control_enabled(FSettings *settings, bool enabled) {
@@ -1946,16 +1820,6 @@ void settings_set_carousel_invert_direction(FSettings *settings, bool enabled) {
 
 bool settings_get_carousel_invert_direction(const FSettings *settings) {
     return settings->carousel_invert_direction;
-}
-
-// Neopixel brightness settings
-void settings_set_neopixel_max_brightness(FSettings *settings, uint8_t brightness) {
-    if (brightness > 100) brightness = 100;
-    settings->neopixel_max_brightness = brightness;
-}
-
-uint8_t settings_get_neopixel_max_brightness(const FSettings *settings) {
-    return settings->neopixel_max_brightness;
 }
 
 void settings_set_encoder_invert_direction(FSettings *settings, bool enabled) {

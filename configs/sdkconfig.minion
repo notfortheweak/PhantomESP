@@ -2382,7 +2382,6 @@ CONFIG_SD_SPI_MOSI_PIN=23
 # NFC Options
 #
 # CONFIG_NFC_PN532 is not set
-CONFIG_NFC_CHAMELEON=y
 CONFIG_HAS_NFC=y
 # end of NFC Options
 # end of Ghost ESP Options

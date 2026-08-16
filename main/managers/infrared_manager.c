@@ -8,7 +8,6 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "sdkconfig.h"
-#include "managers/rgb_manager.h"
 #include "esp_log.h"
 #include <ctype.h>
 #include <stdint.h>
@@ -651,7 +650,6 @@ bool infrared_manager_transmit(const infrared_signal_t *signal) {
 #ifdef CONFIG_HAS_INFRARED
     gpio_set_level(CONFIG_INFRARED_LED_PIN, 1);
 #endif
-    rgb_manager_set_color(&rgb_manager, -1, 51, 0, 51, false);
     bool ok = false;
     if (signal->is_raw) {
         infrared_rx_pause_for_tx(true);
@@ -718,7 +716,6 @@ bool infrared_manager_transmit(const infrared_signal_t *signal) {
     }
 #endif
 
-    rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
     ESP_LOGI(TAG_IR_MANAGER, "ir signal transmission complete (name: %s, status: %s)", signal->name, ok ? "OK" : "FAIL");
     if (!ok) {
         toast_show("IR send failed", TOAST_ERROR);
@@ -940,8 +937,6 @@ bool infrared_manager_dazzler_start(void) {
         .duration1 = 500,
     };
 
-    rgb_manager_set_color(&rgb_manager, -1, 255, 0, 0, false);
-
     esp_err_t err = rmt_transmit(s_dazzler_tx_chan, s_dazzler_encoder, &burst, sizeof(burst),
                                  &(rmt_transmit_config_t){.loop_count = -1});
     if (err != ESP_OK) {
@@ -976,8 +971,6 @@ void infrared_manager_dazzler_stop(void) {
     }
     rmt_del_channel(s_dazzler_tx_chan);
     s_dazzler_tx_chan = NULL;
-
-    rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
 
 #ifdef CONFIG_BUILD_CONFIG_TEMPLATE
     if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "poltergeist") == 0) {

@@ -13,7 +13,6 @@
 #include "managers/espnow_manager.h"
 #include "managers/infrared_manager.h"
 #include "managers/plugin_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/sd_card_manager.h"
 #include "managers/subghz_remote_manager.h"
 #include "managers/views/app_gallery_screen.h"
@@ -1762,8 +1761,10 @@ static bool plugin_api_ble_adv_scan_save_to_sd(int index) {
 }
 
 static bool plugin_api_rgb_set_all(uint8_t red, uint8_t green, uint8_t blue) {
-    if (!plugin_api_has_permission(PLUGIN_PERMISSION_RGB)) return false;
-    return rgb_manager_set_color(&rgb_manager, -1, red, green, blue, false) == ESP_OK;
+    // RGB/LED control removed. Kept as an inert stub for plugin ABI stability
+    // (struct member layout must not change).
+    (void)red; (void)green; (void)blue;
+    return false;
 }
 
 const char *plugin_api_current_target(void) {

@@ -19,7 +19,6 @@
 #include "host/ble_gap.h"
 #endif
 #include "managers/dial_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/views/error_popup.h"
 #include "managers/settings_sd_backup.h"
@@ -296,7 +295,6 @@ void register_commands() {
     register_command("blewardriving", handle_ble_wardriving);
     register_command("listairtags", handle_list_airtags_cmd);
     register_command("selectairtag", handle_select_airtag);
-    register_command("chameleon", handle_chameleon_cmd);
 #endif
     register_command("crash", handle_crash);
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
@@ -307,9 +305,6 @@ void register_commands() {
     register_command("apcred", handle_apcred);
     register_command("apenable", handle_ap_enable_cmd);
     register_command("chipinfo", handle_chip_info_cmd);
-    register_command("rgbmode", handle_rgb_mode);
-    register_command("setrgbpins", handle_setrgb);
-    register_command("setrgbcount", handle_setrgbcount);
     register_command("sd_config", handle_sd_config);
     register_command("sd_pins_mmc", handle_sd_pins_mmc);
     register_command("sd_pins_spi", handle_sd_pins_spi);
@@ -341,9 +336,6 @@ void register_commands() {
     register_command("webuiap", handle_webuiap_cmd);
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #endif
-    register_command("setrgbmode", handle_set_rgb_mode_cmd);
-    register_command("setneopixelbrightness", handle_set_neopixel_brightness_cmd);
-    register_command("getneopixelbrightness", handle_get_neopixel_brightness_cmd);
 #ifdef CONFIG_HAS_INFRARED
     register_command("ir", handle_ir_cmd);
 #endif

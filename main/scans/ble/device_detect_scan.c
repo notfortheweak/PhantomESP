@@ -11,7 +11,6 @@
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
 #include "managers/ble_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/status_display_manager.h"
 #include "scans/ble/airtag_scan.h"
 #include "scans/ble/flipper_scan.h"
@@ -73,8 +72,6 @@ EXT_RAM_BSS_ATTR static BLEDetectDevice s_devices[MAX_BLE_DETECT_DEVICES];
 static int s_device_count = 0;
 static bool s_scan_active = false;
 static BLEDetectTrackingState s_tracking = {0};
-
-extern RGBManager_t rgb_manager;
 
 static const char *flipper_type_from_uuid(uint16_t uuid) {
     switch (uuid) {
@@ -350,15 +347,6 @@ static void ble_device_detect_callback(struct ble_gap_event *event, size_t len) 
         glog("     Variant: %s\n", device->subtype);
     }
 
-    // Keep the NimBLE callback path non-blocking so scan stop/deinit can complete promptly.
-    if (device->type == BLE_DETECT_DEVICE_FLIPPER) {
-        rgb_manager_pulse_async(&rgb_manager, 255, 165, 0);
-    } else if (device->type == BLE_DETECT_DEVICE_AIRTAG) {
-        rgb_manager_pulse_async(&rgb_manager, 0, 0, 255);
-    } else if (device->type == BLE_DETECT_DEVICE_SKIMMER) {
-        rgb_manager_pulse_async(&rgb_manager, 255, 0, 0);
-    }
-
     if (s_tracking.active && device->type == s_tracking.type &&
         device->addr.type == s_tracking.addr.type &&
         memcmp(device->addr.val, s_tracking.addr.val, sizeof(device->addr.val)) == 0) {
@@ -404,10 +392,6 @@ void ble_device_detect_stop(void) {
     s_tracking.active = false;
     s_tracking.last_log_tick = 0;
     ble_unregister_handler(ble_device_detect_callback);
-
-    if (was_active) {
-        rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
-    }
 
     if (was_active && ble_is_initialized()) {
         ble_stop();

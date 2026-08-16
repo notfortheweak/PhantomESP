@@ -22,7 +22,6 @@
 #include "managers/gps_manager.h"
 #include "managers/infrared_manager.h"
 #include "managers/microphone/mic_visualizer.h"
-#include "managers/rgb_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/status_display_manager.h"
 #include "managers/views/terminal_screen.h"
@@ -89,10 +88,6 @@ void handle_stop_flipper(int argc, char **argv) {
         glog("Stopped CLI watch.\n");
         stopped_any = true;
     }
-
-#ifdef CONFIG_ENABLE_MIC_RGB_VISUALIZER
-    rgb_manager_set_mic_stream_suspended(true);
-#endif
 
 #ifdef CONFIG_HAS_MIC
     bool restart_mic_visualizer = mic_visualizer_is_running();
@@ -220,7 +215,6 @@ void handle_stop_flipper(int argc, char **argv) {
         stopped_any = true;
         wifi_manager_stop_visualizer();
     }
-    settings_restart_rgb_effect();
 
     if (stopped_any) {
         glog("All activities stopped.\n");
@@ -234,10 +228,6 @@ void handle_stop_flipper(int argc, char **argv) {
     if (restart_mic_visualizer) {
         mic_visualizer_start();
     }
-#endif
-
-#ifdef CONFIG_ENABLE_MIC_RGB_VISUALIZER
-    rgb_manager_set_mic_stream_suspended(false);
 #endif
 }
 

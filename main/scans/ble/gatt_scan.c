@@ -22,7 +22,6 @@
 #include "core/glog.h"
 #include "core/utils.h"
 #include "managers/ble_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/status_display_manager.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -182,9 +181,6 @@ static uint8_t gatt_chrs_to_read_count = 0;
 
 // Device tracking state (consolidated)
 static TrackingState g_tracking = {0};
-
-// External RGB manager
-extern RGBManager_t rgb_manager;
 
 // Forward declarations
 static void gatt_scan_callback(struct ble_gap_event *event, size_t len);

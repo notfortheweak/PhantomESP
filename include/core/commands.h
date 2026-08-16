@@ -49,7 +49,7 @@ void handle_script_cmd(int argc, char **argv);
 #endif
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
-// BLE, AirTag, Flipper, GATT, Chameleon, and BLE spam
+// BLE, AirTag, Flipper, and GATT
 void handle_ble_scan_cmd(int argc, char **argv);
 void handle_ble_wardriving(int argc, char **argv);
 void handle_list_airtags_cmd(int argc, char **argv);
@@ -61,7 +61,6 @@ void handle_select_gatt_cmd(int argc, char **argv);
 void handle_enum_gatt_cmd(int argc, char **argv);
 void handle_track_gatt_cmd(int argc, char **argv);
 void handle_list_advertisers_cmd(int argc, char **argv);
-void handle_chameleon_cmd(int argc, char **argv);
 void ble_bridge_handle_command(int argc, char **argv);
 #endif
 
@@ -116,11 +115,6 @@ void handle_help(int argc, char **argv);
 // AP credentials command
 void handle_apcred(int argc, char **argv);
 
-// RGB effect commands
-void handle_rgb_mode(int argc, char **argv);
-void handle_setrgb(int argc, char **argv);
-void handle_setrgbcount(int argc, char **argv);
-
 // Scan-all and sweep commands
 void handle_scanall(int argc, char **argv);
 void handle_sweep_cmd(int argc, char **argv);
@@ -152,13 +146,6 @@ void handle_mic_cal_cmd(int argc, char **argv);
 
 // WiGLE commands
 void handle_wigle_cmd(int argc, char **argv);
-
-// Karma commands
-
-// RGB and Neopixel commands
-void handle_set_rgb_mode_cmd(int argc, char **argv);
-void handle_set_neopixel_brightness_cmd(int argc, char **argv);
-void handle_get_neopixel_brightness_cmd(int argc, char **argv);
 
 // Input / IO button / visualizer commands
 void handle_raveport_cmd(int argc, char **argv);

@@ -9,7 +9,6 @@
 #include "managers/ap_manager.h"
 #include "managers/display_manager.h"
 #include "managers/haptic_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/sd_card_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/ota_manager.h"
@@ -185,8 +184,6 @@ static void splash_plugin_progress_cb(float pct, int files_scanned, int files_to
              (int)after_int, (int)(before_int - after_int), \
              (int)after_psram, (int)(before_psram - after_psram)); \
 } while(0)
-
-RGBManager_t rgb_manager;  // Global instance for entire project
 
 int ieee80211_raw_frame_sanity_check(int32_t arg, int32_t arg2, int32_t arg3) { return 0; }
 static const char *TAG = "Main.c";
@@ -946,9 +943,6 @@ void app_main(void) {
         ESP_LOGW(TAG, "Haptic manager failed to initialize: %s", esp_err_to_name(haptic_err));
     }
 #endif
-    if (settings_get_rgb_mode(&G_Settings) == RGB_MODE_RAINBOW) {
-        display_manager_set_rainbow_mode(true);
-    }
 #endif
 #ifdef CONFIG_WITH_STATUS_DISPLAY
     MEASURE_INIT_RAM("Status display init", status_display_init());
@@ -986,72 +980,6 @@ void app_main(void) {
 #endif
     }
 #endif
-
-    // Initialize RGB Manager based on persisted settings or compile-time defaults
-    {
-        bool initialized = false;
-        int32_t data_pin = settings_get_rgb_data_pin(&G_Settings);
-        int rgb_led_count = settings_get_rgb_led_count(&G_Settings);
-        if (rgb_led_count <= 0) {
-            if (rgb_manager.num_leds > 0) {
-                rgb_led_count = rgb_manager.num_leds;
-            } else if (CONFIG_NUM_LEDS > 0) {
-                rgb_led_count = CONFIG_NUM_LEDS;
-            } else {
-                rgb_led_count = 1;
-            }
-        }
-        int32_t red_pin, green_pin, blue_pin;
-        settings_get_rgb_separate_pins(&G_Settings, &red_pin, &green_pin, &blue_pin);
-        if (data_pin != GPIO_NUM_NC) {
-            esp_err_t rgb_err;
-            MEASURE_INIT_RAM("RGB Manager (data pin) init", rgb_err = rgb_manager_init(&rgb_manager, data_pin, rgb_led_count, LED_PIXEL_FORMAT_GRB,
-                                                 LED_MODEL_WS2812, GPIO_NUM_NC, GPIO_NUM_NC, GPIO_NUM_NC));
-            initialized = (rgb_err == ESP_OK);
-        } else if (red_pin != GPIO_NUM_NC && green_pin != GPIO_NUM_NC && blue_pin != GPIO_NUM_NC) {
-            esp_err_t rgb_err;
-            MEASURE_INIT_RAM("RGB Manager (separate pins) init", rgb_err = rgb_manager_init(&rgb_manager, GPIO_NUM_NC, rgb_led_count, LED_PIXEL_FORMAT_GRB,
-                                                 LED_MODEL_WS2812, red_pin, green_pin, blue_pin));
-            initialized = (rgb_err == ESP_OK);
-        }
-            if (!initialized && rgb_led_count > 0) {
-#ifdef CONFIG_LED_DATA_PIN
-            if (CONFIG_LED_DATA_PIN >= 0) {
-            esp_err_t rgb_err;
-            MEASURE_INIT_RAM("RGB Manager (fallback) init", rgb_err = rgb_manager_init(&rgb_manager, CONFIG_LED_DATA_PIN, rgb_led_count, LED_ORDER,
-                                                 LED_MODEL_WS2812, GPIO_NUM_NC, GPIO_NUM_NC, GPIO_NUM_NC));
-            initialized = (rgb_err == ESP_OK);
-            }
-#elif defined(CONFIG_RED_RGB_PIN) && defined(CONFIG_GREEN_RGB_PIN) && defined(CONFIG_BLUE_RGB_PIN)
-            if (CONFIG_RED_RGB_PIN >= 0 && CONFIG_GREEN_RGB_PIN >= 0 && CONFIG_BLUE_RGB_PIN >= 0) {
-            esp_err_t rgb_err;
-            MEASURE_INIT_RAM("RGB Manager (fallback separate pins) init", rgb_err = rgb_manager_init(&rgb_manager, GPIO_NUM_NC, rgb_led_count, LED_PIXEL_FORMAT_GRB,
-                                                 LED_MODEL_WS2812, CONFIG_RED_RGB_PIN, CONFIG_GREEN_RGB_PIN, CONFIG_BLUE_RGB_PIN));
-            initialized = (rgb_err == ESP_OK);
-            }
-#endif
-        }
-        RGBMode boot_mode = settings_get_rgb_mode(&G_Settings);
-        if (initialized && boot_mode == RGB_MODE_RAINBOW) {
-            xTaskCreatePinnedToCore(rainbow_task, "Rainbow Task", 3072,
-                                    &rgb_manager, RGB_EFFECT_TASK_PRIORITY,
-                                    &rgb_effect_task_handle,
-                                    RGB_EFFECT_TASK_CORE);
-        } else if (initialized && boot_mode == RGB_MODE_KNIGHT_RIDER) {
-            xTaskCreate(knightrider_task, "Knight Rider Task", 3072, &rgb_manager,
-                        RGB_EFFECT_TASK_PRIORITY, &rgb_effect_task_handle);
-        } else if (initialized && boot_mode >= RGB_MODE_RED && boot_mode <= RGB_MODE_PINK) {
-            // Restore saved static color at boot
-            rgb_manager_apply_static_from_settings();
-        }
-        
-#ifdef CONFIG_ENABLE_MIC_RGB_VISUALIZER
-        // Register MIC amplitude stream handler for RGB visualizer
-        if (initialized) {
-            rgb_manager_register_mic_stream_handler();
-        }
-#endif
-    }
 
     ESP_LOGI(TAG, "Build config used: %s", CONFIG_BUILD_CONFIG_TEMPLATE);
     printf("Build Name: %s\n", CONFIG_BUILD_CONFIG_TEMPLATE);

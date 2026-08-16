@@ -23,7 +23,6 @@
 #include "lwip/ip4_addr.h"
 #include "lwip/lwip_napt.h"
 #include "managers/ap_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/ota_manager.h"
 #include "managers/peer_ota_manager.h"
@@ -456,8 +455,6 @@ void wifi_manager_start_visualizer(bool for_screen) {
 #if defined(CONFIG_WITH_SCREEN) || defined(WITH_SCREEN)
         xTaskCreate(screen_music_visualizer_task, "udp_server", 4096, NULL, 5, &VisualizerHandle);
 #endif
-    } else {
-        xTaskCreate(animate_led_based_on_amplitude, "udp_server", 4096, NULL, 5, &VisualizerHandle);
     }
 }
 
@@ -1094,7 +1091,6 @@ void wifi_manager_stop_scan() {
     }
 
     wifi_manager_stop_monitor_mode();
-    rgb_manager_set_color(&rgb_manager, -1, 0, 0, 0, false);
 
     uint16_t initial_ap_count = 0;
     err = esp_wifi_scan_get_ap_num(&initial_ap_count);
@@ -1403,143 +1399,6 @@ void screen_music_visualizer_task(void *pvParameters) {
     VisualizerHandle = NULL;
     vTaskDelete(NULL);
 }
-void animate_led_based_on_amplitude(void *pvParameters) {
-    (void)pvParameters;
-    char rx_buffer[128];
-    char addr_str[128];
-    int addr_family = AF_INET;
-    int ip_protocol = IPPROTO_IP;
-    struct sockaddr_in dest_addr;
-
-    dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    dest_addr.sin_family = addr_family;
-    dest_addr.sin_port = htons(UDP_PORT);
-
-    visualizer_stop_requested = false;
-
-    int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
-    if (sock < 0) {
-        printf("Unable to create socket: errno %d\n", errno);
-        VisualizerHandle = NULL;
-        vTaskDelete(NULL);
-    }
-    visualizer_socket = sock;
-    printf("Socket created\n");
-
-    if (bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
-        printf("Socket unable to bind: errno %d\n", errno);
-        close(sock);
-        visualizer_socket = -1;
-        VisualizerHandle = NULL;
-        vTaskDelete(NULL);
-    }
-    printf("Socket bound, port %d\n", UDP_PORT);
-
-    float amplitude = 0.0f;
-    float last_amplitude = 0.0f;
-    float smoothing_factor = 0.1f;
-    int hue = 0;
-    
-    uint32_t last_error_time = 0;
-    const uint32_t error_rate_limit_ms = 5000;
-
-    while (!visualizer_stop_requested) {
-        struct sockaddr_in source_addr;
-        socklen_t socklen = sizeof(source_addr);
-        int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, MSG_DONTWAIT,
-                           (struct sockaddr *)&source_addr, &socklen);
-
-        if (len > 0) {
-            rx_buffer[len] = '\0';
-            inet_ntoa_r(source_addr.sin_addr, addr_str, sizeof(addr_str) - 1);
-            printf("Received %d bytes from %s: %s\n", len, addr_str, rx_buffer);
-
-            amplitude = atof(rx_buffer);
-            amplitude = fmaxf(0.0f, fminf(amplitude, 1.0f)); // Clamp between 0.0 and 1.0
-
-            // Smooth amplitude to avoid sudden changes (optional)
-            amplitude =
-                (smoothing_factor * amplitude) + ((1.0f - smoothing_factor) * last_amplitude);
-            last_amplitude = amplitude;
-        } else {
-            // Gradually decrease amplitude when no data is received
-            amplitude = last_amplitude * 0.9f; // Adjust decay rate as needed
-            last_amplitude = amplitude;
-        }
-
-        // Ensure amplitude doesn't go below zero
-        amplitude = fmaxf(0.0f, amplitude);
-
-        hue = (int)(amplitude * 360) % 360;
-
-        float h = hue / 60.0f;
-        float s = 1.0f;
-        float v = amplitude;
-
-        int i = (int)h % 6;
-        float f = h - (int)h;
-        float p = v * (1.0f - s);
-        float q = v * (1.0f - f * s);
-        float t = v * (1.0f - (1.0f - f) * s);
-
-        float r = 0.0f, g = 0.0f, b = 0.0f;
-        switch (i) {
-        case 0:
-            r = v;
-            g = t;
-            b = p;
-            break;
-        case 1:
-            r = q;
-            g = v;
-            b = p;
-            break;
-        case 2:
-            r = p;
-            g = v;
-            b = t;
-            break;
-        case 3:
-            r = p;
-            g = q;
-            b = v;
-            break;
-        case 4:
-            r = t;
-            g = p;
-            b = v;
-            break;
-        case 5:
-            r = v;
-            g = p;
-            b = q;
-            break;
-        }
-
-        uint8_t red = (uint8_t)(r * 255);
-        uint8_t green = (uint8_t)(g * 255);
-        uint8_t blue = (uint8_t)(b * 255);
-
-        esp_err_t ret = rgb_manager_set_color(&rgb_manager, 0, red, green, blue, false);
-        if (ret != ESP_OK) {
-            printf("Failed to set color\n");
-        }
-
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-    }
-
-    if (sock != -1) {
-        printf("Shutting down socket...\n");
-        shutdown(sock, 0);
-        close(sock);
-    }
-
-    visualizer_socket = -1;
-    visualizer_stop_requested = false;
-    VisualizerHandle = NULL;
-    vTaskDelete(NULL);
-}
-
 #define START_HOST 1
 #define END_HOST 254
 #define SCAN_TIMEOUT_MS 100
@@ -1571,64 +1430,6 @@ uint16_t calculate_checksum(uint16_t *addr, int len) {
 }
 
 
-void rgb_visualizer_server_task(void *pvParameters) {
-    char rx_buffer[MAX_PAYLOAD];
-    char addr_str[128];
-    int addr_family;
-    int ip_protocol;
-
-    while (1) {
-        struct sockaddr_in dest_addr;
-        dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-        dest_addr.sin_family = AF_INET;
-        dest_addr.sin_port = htons(UDP_PORT);
-        addr_family = AF_INET;
-        ip_protocol = IPPROTO_IP;
-        inet_ntoa_r(dest_addr.sin_addr, addr_str, sizeof(addr_str) - 1);
-
-        int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
-        if (sock < 0) {
-            printf("Unable to create socket: errno %d\n", errno);
-            break;
-        }
-        printf("Socket created\n");
-
-        int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if (err < 0) {
-            printf("Socket unable to bind: errno %d\n", errno);
-        }
-        printf("Socket bound, port %d\n", UDP_PORT);
-
-        while (1) {
-            printf("Waiting for data\n");
-            struct sockaddr_in6 source_addr;
-            socklen_t socklen = sizeof(source_addr);
-            int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
-                               (struct sockaddr *)&source_addr, &socklen);
-
-            if (len < 0) {
-                printf("recvfrom failed: errno %d\n", errno);
-                break;
-            } else {
-                // Data received
-                rx_buffer[len] = 0; // Null-terminate
-
-                // Process the received data
-                uint8_t *amplitudes = (uint8_t *)rx_buffer;
-                size_t num_bars = len;
-                update_led_visualizer(amplitudes, num_bars, false);
-            }
-        }
-
-        if (sock != -1) {
-            printf("Shutting down socket and restarting...\n");
-            shutdown(sock, 0);
-            close(sock);
-        }
-    }
-
-    vTaskDelete(NULL);
-}
 
 static void wifi_manager_print_ap_entry_formatted(uint16_t idx, const wifi_ap_record_t *rec, bool include_security) {
     char sanitized_ssid[33];
@@ -2376,8 +2177,6 @@ esp_err_t wifi_manager_start_scan_with_time(int seconds) {
         .channel = 0,
         .show_hidden = true
     };
-
-    rgb_manager_set_color(&rgb_manager, -1, 50, 255, 50, false);
 
     printf("WiFi Scan started\n");
     printf("Please wait %d Seconds...\n", seconds);

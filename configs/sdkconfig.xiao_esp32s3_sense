@@ -655,7 +655,6 @@ CONFIG_USB_KBD_DPLUS_PIN=20
 # NFC Options
 #
 # CONFIG_NFC_PN532 is not set
-CONFIG_NFC_CHAMELEON=y
 CONFIG_HAS_NFC=y
 # end of NFC Options
 # end of Misc Options

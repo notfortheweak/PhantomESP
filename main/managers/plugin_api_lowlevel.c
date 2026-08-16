@@ -1520,7 +1520,6 @@ bool plugin_api_settings_get_u8(const char *key, uint8_t *out) {
     if (strcmp(key, "theme") == 0) *out = settings_get_menu_theme(&G_Settings);
     else if (strcmp(key, "max_brightness") == 0) *out = settings_get_max_screen_brightness(&G_Settings);
     else if (strcmp(key, "nav_buttons") == 0) *out = settings_get_nav_buttons_enabled(&G_Settings) ? 1 : 0;
-    else if (strcmp(key, "neopixel_brightness") == 0) *out = settings_get_neopixel_max_brightness(&G_Settings);
     else if (strcmp(key, "power_save") == 0) *out = settings_get_power_save_enabled(&G_Settings) ? 1 : 0;
     else return false;
     return true;
@@ -1531,7 +1530,6 @@ bool plugin_api_settings_set_u8(const char *key, uint8_t value) {
     if (strcmp(key, "theme") == 0) settings_set_menu_theme(&G_Settings, value);
     else if (strcmp(key, "max_brightness") == 0) settings_set_max_screen_brightness(&G_Settings, value);
     else if (strcmp(key, "nav_buttons") == 0) settings_set_nav_buttons_enabled(&G_Settings, value != 0);
-    else if (strcmp(key, "neopixel_brightness") == 0) settings_set_neopixel_max_brightness(&G_Settings, value);
     else if (strcmp(key, "power_save") == 0) settings_set_power_save_enabled(&G_Settings, value != 0);
     else return false;
     return true;

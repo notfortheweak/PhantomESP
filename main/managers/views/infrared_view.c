@@ -86,7 +86,6 @@ static bool popup_style_initialized = false;
 #include "managers/infrared_manager.h"
 #include "managers/infrared_decoder.h"
 #include "core/universal_ir.h"
-#include "managers/rgb_manager.h"
 #include "sdkconfig.h"
 #include "managers/sd_card_manager.h"
 #include "esp_log.h"

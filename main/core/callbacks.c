@@ -2,7 +2,6 @@
 #include "core/system_manager.h"
 #include "esp_wifi.h"
 #include "managers/gps_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/views/terminal_screen.h"
 #include "managers/wifi_manager.h"
 #include "managers/status_display_manager.h"
@@ -2086,8 +2085,6 @@ static void pineap_log_worker_task(void *arg) {
         int valid_ssid_count = build_recent_ssids_string(network, ssids_str, sizeof(ssids_str));
 
         if (valid_ssid_count >= MIN_SSIDS_FOR_DETECTION) {
-            pulse_once(&rgb_manager, 255, 0, 255);
-
             for (int i = 0; i < pineap_network_count; i++) {
                 if (i != (network - pineap_networks) &&
                     strcasecmp(network->recent_ssids[0], pineap_networks[i].recent_ssids[0]) == 0) {
@@ -3665,9 +3662,6 @@ void ble_skimmer_scan_callback(struct ble_gap_event *event, void *arg) {
                 glog("Reason:\nMatched known skimmer pattern: %s\n", suspicious_names[i]);
 
                 glog("Please verify before taking action.\n\n");
-
-                // pulse rgb red once when skimmer is detected
-                pulse_once(&rgb_manager, 255, 0, 0);
 
                 // Create enhanced PCAP packet with metadata
                 if (pcap_is_capturing()) {

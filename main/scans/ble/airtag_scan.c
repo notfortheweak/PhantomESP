@@ -14,7 +14,6 @@
 #include "core/glog.h"
 #include "core/utils.h"
 #include "managers/ble_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/status_display_manager.h"
 #include "esp_attr.h"
 #include "esp_log.h"
@@ -55,9 +54,6 @@ static int discovered_airtag_count = 0;
 static int selected_airtag_index = -1;
 static TickType_t airtag_last_rssi_log[MAX_AIRTAGS];
 static volatile bool airtag_scan_active = false;
-
-// External RGB manager
-extern RGBManager_t rgb_manager;
 
 // Forward declarations
 static void airtag_scanner_callback(struct ble_gap_event *event, size_t len);
@@ -198,9 +194,7 @@ static void airtag_scanner_callback(struct ble_gap_event *event, size_t len) {
     format_mac_address(event->disc.addr.val, macAddress, sizeof(macAddress), false);
     log_airtag_discovery(discovered_airtag_count, discovered_airtag_count + 1,
                          macAddress, event->disc.rssi);
-    // Avoid blocking the NimBLE host task inside the discovery callback.
-    rgb_manager_set_color(&rgb_manager, -1, 0, 0, 255, false);
-    
+
     discovered_airtag_count++;
 }
 

@@ -14,7 +14,6 @@
 #include "core/glog.h"
 #include "core/utils.h"
 #include "managers/ble_manager.h"
-#include "managers/rgb_manager.h"
 #include "managers/status_display_manager.h"
 #include "esp_attr.h"
 #include "esp_log.h"
@@ -65,9 +64,6 @@ static int selected_flipper_index = -1;
 static volatile bool flipper_scan_active = false;
 static TickType_t flipper_adv_last_log_tick = 0;
 static uint32_t flipper_adv_suppressed_logs = 0;
-
-// External RGB manager
-extern RGBManager_t rgb_manager;
 
 // Forward declarations
 static const char *detect_flipper_type_from_adv(const uint8_t *data, size_t len);
@@ -320,8 +316,6 @@ static void ble_findtheflippers_callback(struct ble_gap_event *event, size_t len
              "     RSSI: %d dBm\n",
              discovered_flipper_count, type_str,
 advertisementMac, advertisementName, advertisementRssi);
-        // Avoid blocking the NimBLE host task inside the discovery callback.
-        rgb_manager_pulse_async(&rgb_manager, 255, 165, 0);
         discovered_flipper_count++;
     }
 }
