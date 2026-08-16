@@ -138,15 +138,7 @@ void handle_capture_scan(int argc, char **argv) {
         }
     }
 
-    bool wifi_channel_lock_mode =
-        strcmp(capturetype, "-probe") == 0 ||
-        strcmp(capturetype, "-deauth") == 0 ||
-        strcmp(capturetype, "-beacon") == 0 ||
-        strcmp(capturetype, "-raw") == 0 ||
-        strcmp(capturetype, "-eapol") == 0 ||
-        strcmp(capturetype, "-pwn") == 0 ||
-        strcmp(capturetype, "-wps") == 0 ||
-        strcmp(capturetype, "-wireshark") == 0;
+    bool wifi_channel_lock_mode = strcmp(capturetype, "-wireshark") == 0;
 
     bool channel_flag_applicable = wifi_channel_lock_mode
 #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
@@ -206,81 +198,6 @@ void handle_capture_scan(int argc, char **argv) {
         return;
     }
 
-    // Helper macro: after starting monitor mode, lock to fixed_channel if asked.
-    // Failure to lock is surfaced as an error and we tear the capture back down,
-    // matching the existing -wireshark behavior.
-#define APPLY_CAPTURE_CHANNEL_LOCK()                                          \
-    do {                                                                      \
-        if (fixed_channel_set) {                                              \
-            esp_err_t _lock_err =                                             \
-                wifi_manager_set_capture_channel_lock(fixed_channel);         \
-            if (_lock_err != ESP_OK) {                                        \
-                glog("Error: Failed to lock capture to channel %d\n",         \
-                     fixed_channel);                                          \
-                status_display_show_status("Channel Err");                    \
-                pcap_file_close();                                            \
-                wifi_manager_stop_monitor_mode();                             \
-                return;                                                       \
-            }                                                                 \
-            glog("Capture locked to channel %d\n", fixed_channel);            \
-        }                                                                     \
-    } while (0)
-
-    if (strcmp(capturetype, "-probe") == 0) {
-        glog("Starting probe request\npacket capture...\n");
-        int err = pcap_file_open("probescan", PCAP_CAPTURE_WIFI);
-
-        if (err != ESP_OK) {
-            glog("Error: pcap failed to open\n");
-            status_display_show_status("PCAP Fail");
-            return;
-        }
-        wifi_manager_start_monitor_mode(wifi_probe_scan_callback);
-        APPLY_CAPTURE_CHANNEL_LOCK();
-        status_display_show_status("Capture Probe");
-    }
-
-    if (strcmp(capturetype, "-deauth") == 0) {
-        int err = pcap_file_open("deauthscan", PCAP_CAPTURE_WIFI);
-
-        if (err != ESP_OK) {
-            glog("Error: pcap failed to open\n");
-            status_display_show_status("PCAP Fail");
-            return;
-        }
-        wifi_manager_start_monitor_mode(wifi_deauth_scan_callback);
-        APPLY_CAPTURE_CHANNEL_LOCK();
-        status_display_show_status("Capture Deauth");
-    }
-
-    if (strcmp(capturetype, "-beacon") == 0) {
-        glog("Starting beacon\npacket capture...\n");
-        int err = pcap_file_open("beaconscan", PCAP_CAPTURE_WIFI);
-
-        if (err != ESP_OK) {
-            glog("Error: pcap failed to open\n");
-            status_display_show_status("PCAP Fail");
-            return;
-        }
-        wifi_manager_start_monitor_mode(wifi_beacon_scan_callback);
-        APPLY_CAPTURE_CHANNEL_LOCK();
-        status_display_show_status("Capture Beacon");
-    }
-
-    if (strcmp(capturetype, "-raw") == 0) {
-        glog("Starting raw\npacket capture...\n");
-        int err = pcap_file_open("rawscan", PCAP_CAPTURE_WIFI);
-
-        if (err != ESP_OK) {
-            glog("Error: pcap failed to open\n");
-            status_display_show_status("PCAP Fail");
-            return;
-        }
-        wifi_manager_start_monitor_mode(wifi_raw_scan_callback);
-        APPLY_CAPTURE_CHANNEL_LOCK();
-        status_display_show_status("Capture Raw");
-    }
-
 #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
     if (strcmp(capturetype, "-802154") == 0) {
         glog("Starting IEEE 802.15.4 packet capture...\n");
@@ -310,50 +227,6 @@ void handle_capture_scan(int argc, char **argv) {
         status_display_show_status("Capture 802154");
     }
 #endif
-
-    if (strcmp(capturetype, "-eapol") == 0) {
-        glog("Starting EAPOL\npacket capture...\n");
-        int err = pcap_file_open("eapolscan", PCAP_CAPTURE_WIFI);
-
-        if (err != ESP_OK) {
-            glog("Error: pcap failed to open\n");
-            status_display_show_status("PCAP Fail");
-            return;
-        }
-        wifi_manager_start_monitor_mode(wifi_eapol_scan_callback);
-        APPLY_CAPTURE_CHANNEL_LOCK();
-        status_display_show_status("Capture EAPOL");
-    }
-
-    if (strcmp(capturetype, "-pwn") == 0) {
-        glog("Starting PWN\npacket capture...\n");
-        int err = pcap_file_open("pwnscan", PCAP_CAPTURE_WIFI);
-
-        if (err != ESP_OK) {
-            glog("Error: pcap failed to open\n");
-            status_display_show_status("PCAP Fail");
-            return;
-        }
-        wifi_manager_start_monitor_mode(wifi_pwn_scan_callback);
-        APPLY_CAPTURE_CHANNEL_LOCK();
-        status_display_show_status("Capture PWN");
-    }
-
-    if (strcmp(capturetype, "-wps") == 0) {
-        glog("Starting WPS\npacket capture...\n");
-        int err = pcap_file_open("wpsscan", PCAP_CAPTURE_WIFI);
-
-        should_store_wps = 0;
-
-        if (err != ESP_OK) {
-            glog("Error: pcap failed to open\n");
-            status_display_show_status("PCAP Fail");
-            return;
-        }
-        wifi_manager_start_monitor_mode(wifi_wps_detection_callback);
-        APPLY_CAPTURE_CHANNEL_LOCK();
-        status_display_show_status("Capture WPS");
-    }
 
     if (strcmp(capturetype, "-wireshark") == 0) {
         status_display_show_status("Wireshark WiFi");
@@ -432,14 +305,7 @@ void handle_capture_scan(int argc, char **argv) {
     }
     #endif
 
-    if (strcmp(capturetype, "-probe") != 0 &&
-        strcmp(capturetype, "-deauth") != 0 &&
-        strcmp(capturetype, "-beacon") != 0 &&
-        strcmp(capturetype, "-raw") != 0 &&
-        strcmp(capturetype, "-eapol") != 0 &&
-        strcmp(capturetype, "-pwn") != 0 &&
-        strcmp(capturetype, "-wps") != 0 &&
-        strcmp(capturetype, "-list") != 0 &&
+    if (strcmp(capturetype, "-list") != 0 &&
         strcmp(capturetype, "-export") != 0 &&
         strcmp(capturetype, "-wireshark") != 0 &&
         strcmp(capturetype, "-stop") != 0
@@ -455,16 +321,14 @@ void handle_capture_scan(int argc, char **argv) {
         glog("Error: Unknown capture type '%s'.\n", capturetype);
         status_display_show_status("Capture Unknown");
     }
-
-#undef APPLY_CAPTURE_CHANNEL_LOCK
 }
 
 void handle_capture(int argc, char **argv) {
     if (argc < 2) {
         #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-        glog("Usage: capture [-probe|-beacon|-deauth|-raw|-eapol|-pwn|-wps|-wireshark|-wiresharkble|-ble|-skimmer|-802154|-list|-export|-stop] [-channel <n>|-c <n>]\n");
+        glog("Usage: capture [-wireshark|-wiresharkble|-ble|-skimmer|-802154|-list|-export|-stop] [-channel <n>|-c <n>]\n");
         #else
-        glog("Usage: capture [-probe|-beacon|-deauth|-raw|-eapol|-pwn|-wps|-wireshark|-wiresharkble|-ble|-skimmer|-list|-export|-stop] [-channel <n>|-c <n>]\n");
+        glog("Usage: capture [-wireshark|-wiresharkble|-ble|-skimmer|-list|-export|-stop] [-channel <n>|-c <n>]\n");
         #endif
         status_display_show_status("Capture Usage");
         return;
