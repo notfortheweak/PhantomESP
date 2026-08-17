@@ -16,9 +16,13 @@
 void handle_help(int argc, char **argv) {
     const char *category = (argc > 1) ? argv[1] : "unknown"; // Default to "unknown" if no category is provided to fall through ifs
 
-    // List of all categories to print in order. Detection leads.
+    // List of all categories to print in order. Detection leads. sweep,
+    // flockscan and pineap are broken out of "detect" into their own
+    // top-level topics (same layer as detect/wifi/ble) so their usage
+    // fits on-screen without scrolling past it -- see 'help detect' for
+    // the rest of the detection family (aerial/airtags/flippers/blescan).
     const char *all_categories[] = {
-        "detect", "wifi", "ble", "gps", "wigle", "sd"
+        "detect", "sweep", "flockscan", "pineap", "wifi", "ble", "gps", "wigle", "sd"
 #ifdef CONFIG_HAS_INFRARED
         , "ir"
 #endif
@@ -34,9 +38,8 @@ void handle_help(int argc, char **argv) {
         return;
     }
 
-    if (strcmp(category, "detect") == 0) {
-        glog("\nCounter-Surveillance Detection:\n\n");
-        glog("sweep\n");
+    if (strcmp(category, "sweep") == 0) {
+        glog("\nsweep\n");
         glog("    Description: Full environment sweep - scans WiFi APs, stations and\n");
         glog("                 BLE devices, then saves a comprehensive report to SD card.\n");
         glog("    Usage: sweep [-w wifi_sec] [-b ble_sec]\n");
@@ -44,7 +47,12 @@ void handle_help(int argc, char **argv) {
         glog("        -w  : WiFi scan duration per phase in seconds (default: 5)\n");
         glog("        -b  : BLE scan duration per phase in seconds (default: 5)\n");
         glog("    Output: /mnt/ghostesp/sweeps/sweep_N.csv\n\n");
-        glog("flockscan\n");
+        glog("See also: help detect, help flockscan, help pineap.\n\n");
+        return;
+    }
+
+    if (strcmp(category, "flockscan") == 0) {
+        glog("\nflockscan\n");
         glog("    Description: Start Flock Safety surveillance-camera detection.\n");
         glog("    Usage: flockscan\n\n");
         glog("flocklist\n");
@@ -54,6 +62,25 @@ void handle_help(int argc, char **argv) {
         glog("flockstop\n");
         glog("    Description: Stop Flock camera detection.\n");
         glog("    Usage: flockstop\n\n");
+        glog("See also: help detect, help sweep, help pineap.\n\n");
+        return;
+    }
+
+    if (strcmp(category, "pineap") == 0) {
+        glog("\npineap\n");
+        glog("    Description: Detect WiFi Pineapple / KARMA-style rogue access points.\n");
+        glog("    Usage: pineap [-s]\n");
+        glog("    Arguments:\n");
+        glog("        -s  : Stop PineAP detection\n\n");
+        glog("See also: help detect, help sweep, help flockscan.\n\n");
+        return;
+    }
+
+    if (strcmp(category, "detect") == 0) {
+        glog("\nCounter-Surveillance Detection:\n\n");
+        glog("sweep       - Full environment sweep, WiFi + BLE  (help sweep)\n");
+        glog("flockscan   - Flock Safety camera detection       (help flockscan)\n");
+        glog("pineap      - WiFi Pineapple / rogue AP detection (help pineap)\n\n");
         glog("aerialscan\n");
         glog("    Description: Detect drones broadcasting OpenDroneID / Remote ID\n");
         glog("                 (Phase 1: WiFi | Phase 2: BLE).\n");
@@ -69,11 +96,6 @@ void handle_help(int argc, char **argv) {
         glog("aerialstop\n");
         glog("    Description: Stop drone detection.\n");
         glog("    Usage: aerialstop\n\n");
-        glog("pineap\n");
-        glog("    Description: Detect WiFi Pineapple / KARMA-style rogue access points.\n");
-        glog("    Usage: pineap [-s]\n");
-        glog("    Arguments:\n");
-        glog("        -s  : Stop PineAP detection\n\n");
         glog("wpa3check\n");
         glog("    Description: Audit AP security posture - WPA3 presence, transition\n");
         glog("                 mode, and PMF (management-frame protection).\n");
@@ -169,7 +191,7 @@ void handle_help(int argc, char **argv) {
         glog("    Arguments:\n");
         glog("        <CC> : Country code (\"01\" world-safe) or two-letter ISO (e.g., US)\n\n");
 #endif
-        glog("See also: 'wpa3check', 'pineap', 'sweep' (help detect).\n\n");
+        glog("See also: 'wpa3check' (help detect), 'pineap' (help pineap), 'sweep' (help sweep).\n\n");
         return;
     }
 
@@ -268,6 +290,9 @@ void handle_help(int argc, char **argv) {
     glog("\nGhost ESP Command Categories:\n\n");
 
     glog("  help detect    - Counter-surveillance detection (start here)\n");
+    glog("  help sweep     - Full environment sweep, WiFi + BLE\n");
+    glog("  help flockscan - Flock Safety camera detection\n");
+    glog("  help pineap    - WiFi Pineapple / rogue AP detection\n");
     glog("  help wifi      - Wi-Fi scan & analyze commands\n");
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     glog("  help ble       - Bluetooth/BLE scan commands\n");
