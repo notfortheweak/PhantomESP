@@ -1,6 +1,5 @@
 #include "managers/usb_keyboard_manager.h"
 
-#include "core/esp_comm_manager.h"
 #include "managers/display_manager.h"
 #include "managers/views/terminal_screen.h"
 #include "freertos/FreeRTOS.h"
@@ -131,12 +130,6 @@ static int usb_kbd_get_joystick_index(uint8_t key_code) {
 
 static void usb_kbd_handle_event(const usb_kbd_key_event_t *ev) {
     if (!ev || !ev->pressed) return;
-
-    uint8_t payload[3];
-    payload[0] = 0x00;
-    payload[1] = ev->modifier;
-    payload[2] = ev->key_code;
-    (void)esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_KEYBOARD, payload, sizeof(payload));
 
     if (!input_queue) return;
 
@@ -348,33 +341,6 @@ static void usb_kbd_stop(void) {
     TERMINAL_VIEW_ADD_TEXT("USB Host disabled\n");
 }
 
-static void usb_kbd_stream_rx_cb(uint8_t channel, const uint8_t* data, size_t length, void* user_data) {
-    (void)channel;
-    (void)user_data;
-    if (!data || length < 3 || !input_queue) return;
-    if (data[0] & USB_KBD_EVENT_FLAG_RELEASE) return;
-    
-    uint8_t key_code = data[2];
-
-    int joy_idx = usb_kbd_get_joystick_index(key_code);
-    if (joy_idx >= 0) {
-        InputEvent ie = {0};
-        ie.type = INPUT_TYPE_JOYSTICK;
-        ie.data.joystick_index = joy_idx;
-        ie.data.joystick_pressed = true;
-        xQueueSend((QueueHandle_t)input_queue, &ie, 0);
-        return;
-    }
-
-    unsigned char ch = 0;
-    if (hid_keyboard_get_char(data[1], key_code, &ch) && ch != 0) {
-        InputEvent ie = {0};
-        ie.type = INPUT_TYPE_KEYBOARD;
-        ie.data.key_value = (uint8_t)ch;
-        xQueueSend((QueueHandle_t)input_queue, &ie, 0);
-    }
-}
-
 bool usb_keyboard_manager_is_host_mode(void) {
     return s_host_mode_active;
 }
@@ -388,8 +354,7 @@ void usb_keyboard_manager_set_host_mode(bool enable) {
 }
 
 void usb_keyboard_manager_register_stream_handler(void) {
-    bool ok = esp_comm_manager_register_stream_handler(COMM_STREAM_CHANNEL_KEYBOARD, usb_kbd_stream_rx_cb, NULL);
-    TERMINAL_VIEW_ADD_TEXT("KBD stream handler(S3): %s\n", ok ? "OK" : "FAIL");
+    // GhostLink peer streaming removed; this is now a no-op kept for main.c's boot call.
 }
 
 #else
@@ -405,73 +370,8 @@ void usb_keyboard_manager_set_host_mode(bool enable) {
     (void)enable;
 }
 
-#define HID_KEY_A     0x04
-#define HID_KEY_SLASH 0x38
-#define HID_KEY_LEFT  0x50
-#define HID_KEY_UP    0x52
-#define HID_KEY_RIGHT 0x4F
-#define HID_KEY_DOWN  0x51
-#define HID_KEY_ENTER 0x28
-#define HID_KEY_ESC   0x29
-#define HID_LEFT_SHIFT  (1 << 1)
-#define HID_RIGHT_SHIFT (1 << 5)
-
-static const uint8_t keycode2ascii_simple[57][2] = {
-    {0, 0}, {0, 0}, {0, 0}, {0, 0},
-    {'a', 'A'}, {'b', 'B'}, {'c', 'C'}, {'d', 'D'}, {'e', 'E'}, {'f', 'F'},
-    {'g', 'G'}, {'h', 'H'}, {'i', 'I'}, {'j', 'J'}, {'k', 'K'}, {'l', 'L'},
-    {'m', 'M'}, {'n', 'N'}, {'o', 'O'}, {'p', 'P'}, {'q', 'Q'}, {'r', 'R'},
-    {'s', 'S'}, {'t', 'T'}, {'u', 'U'}, {'v', 'V'}, {'w', 'W'}, {'x', 'X'},
-    {'y', 'Y'}, {'z', 'Z'}, {'1', '!'}, {'2', '@'}, {'3', '#'}, {'4', '$'},
-    {'5', '%'}, {'6', '^'}, {'7', '&'}, {'8', '*'}, {'9', '('}, {'0', ')'},
-    {'\r', '\r'}, {0, 0}, {'\b', 0}, {0, 0}, {' ', ' '}, {'-', '_'},
-    {'=', '+'}, {'[', '{'}, {']', '}'}, {'\\', '|'}, {'\\', '|'},
-    {';', ':'}, {'\'', '"'}, {'`', '~'}, {',', '<'}, {'.', '>'}, {'/', '?'}
-};
-
-static void usb_kbd_stream_rx_cb_simple(uint8_t channel, const uint8_t* data, size_t length, void* user_data) {
-    (void)channel;
-    (void)user_data;
-    if (!data || length < 3 || !input_queue) return;
-    if (data[0] & 0x01) return;
-    
-    uint8_t modifier = data[1];
-    uint8_t key_code = data[2];
-    
-    int joy_idx = -1;
-    switch (key_code) {
-        case HID_KEY_LEFT:  joy_idx = 0; break;
-        case HID_KEY_ENTER: joy_idx = 1; break;
-        case HID_KEY_UP:    joy_idx = 2; break;
-        case HID_KEY_RIGHT: joy_idx = 3; break;
-        case HID_KEY_DOWN:  joy_idx = 4; break;
-        case HID_KEY_ESC:   joy_idx = 5; break;
-    }
-    
-    if (joy_idx >= 0) {
-        InputEvent ie = {0};
-        ie.type = INPUT_TYPE_JOYSTICK;
-        ie.data.joystick_index = joy_idx;
-        ie.data.joystick_pressed = true;
-        xQueueSend((QueueHandle_t)input_queue, &ie, 0);
-        return;
-    }
-    
-    if (key_code >= HID_KEY_A && key_code <= HID_KEY_SLASH) {
-        uint8_t shift = ((modifier & HID_LEFT_SHIFT) || (modifier & HID_RIGHT_SHIFT)) ? 1 : 0;
-        uint8_t ch = keycode2ascii_simple[key_code][shift];
-        if (ch != 0) {
-            InputEvent ie = {0};
-            ie.type = INPUT_TYPE_KEYBOARD;
-            ie.data.key_value = ch;
-            xQueueSend((QueueHandle_t)input_queue, &ie, 0);
-        }
-    }
-}
-
 void usb_keyboard_manager_register_stream_handler(void) {
-    bool ok = esp_comm_manager_register_stream_handler(COMM_STREAM_CHANNEL_KEYBOARD, usb_kbd_stream_rx_cb_simple, NULL);
-    TERMINAL_VIEW_ADD_TEXT("KBD stream handler: %s\n", ok ? "OK" : "FAIL");
+    // GhostLink peer streaming removed; this is now a no-op kept for main.c's boot call.
 }
 
 #endif

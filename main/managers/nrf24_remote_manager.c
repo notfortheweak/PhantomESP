@@ -3,8 +3,6 @@
 
 #ifdef CONFIG_HAS_NRF24
 
-#include "core/esp_comm_manager.h"
-
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_err.h"
@@ -287,23 +285,10 @@ static void nrf24_hw_stop(void) {
 }
 
 static void nrf24_stream_chunk(uint8_t cursor, uint8_t start_ch, uint8_t count) {
-    if (!s_stream_to_peer || !esp_comm_manager_is_connected() || count == 0) {
-        return;
-    }
-
-    uint8_t pkt[4 + 32] = {0};
-    if (count > 32) count = 32;
-    pkt[0] = NRF24_STREAM_VERSION;
-    pkt[1] = cursor;
-    pkt[2] = start_ch;
-    pkt[3] = count;
-
-    for (uint8_t i = 0; i < count; i++) {
-        uint8_t ch = (uint8_t)((start_ch + i) % NRF24_CHANNEL_COUNT);
-        pkt[4 + i] = s_levels[ch];
-    }
-
-    (void)esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_NRF24, pkt, (size_t)(4 + count));
+    // GhostLink peer streaming removed; local scan data stays on-device.
+    (void)cursor;
+    (void)start_ch;
+    (void)count;
 }
 
 static void nrf24_scan_task(void *arg) {
@@ -314,9 +299,6 @@ static void nrf24_scan_task(void *arg) {
 
     if (nrf24_hw_start() != ESP_OK) {
         nrf24_set_last_error("hw init failed");
-        if (s_stream_to_peer && esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("nrf24", "state error");
-        }
         s_nrf24_task = NULL;
         vTaskDelete(NULL);
         return;
@@ -371,10 +353,6 @@ static void nrf24_scan_task(void *arg) {
     }
 
     nrf24_hw_stop();
-
-    if (s_stream_to_peer && esp_comm_manager_is_connected()) {
-        esp_comm_manager_send_command("nrf24", "state stopped");
-    }
 
     s_nrf24_task = NULL;
     vTaskDelete(NULL);

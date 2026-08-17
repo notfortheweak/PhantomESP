@@ -61,7 +61,6 @@ void handle_select_gatt_cmd(int argc, char **argv);
 void handle_enum_gatt_cmd(int argc, char **argv);
 void handle_track_gatt_cmd(int argc, char **argv);
 void handle_list_advertisers_cmd(int argc, char **argv);
-void ble_bridge_handle_command(int argc, char **argv);
 #endif
 
 // Channel congestion scan and passive probe listening.
@@ -104,10 +103,6 @@ void handle_apps_cmd(int argc, char **argv);
 #if CONFIG_IDF_TARGET_ESP32C5
 void handle_setcountry(int argc, char **argv);
 #endif
-
-// Capture commands
-void handle_capture_scan(int argc, char **argv);
-void handle_capture(int argc, char **argv);
 
 // Help command
 void handle_help(int argc, char **argv);
@@ -153,21 +148,6 @@ void handle_rave_cmd(int argc, char **argv);
 void handle_identify_cmd(int argc, char **argv);
 void handle_input_cmd(int argc, char **argv);
 void handle_iobtn_cmd(int argc, char **argv);
-
-// Communication commands
-void handle_comm_discovery(int argc, char **argv);
-void handle_comm_connect(int argc, char **argv);
-void handle_comm_send(int argc, char **argv);
-void handle_comm_status(int argc, char **argv);
-void handle_comm_disconnect(int argc, char **argv);
-void handle_comm_setpins(int argc, char **argv);
-void cmd_comm_register_callback(void);
-
-// GhostLink peer-flashing commands (see managers/peer_ota_manager.c)
-void handle_otarecv_cmd(int argc, char **argv);
-void handle_otastatus_cmd(int argc, char **argv);
-void handle_otaabort_cmd(int argc, char **argv);
-void handle_otainfo_cmd(int argc, char **argv);
 
 // Aerial and Flock commands
 void handle_aerial_scan_cmd(int argc, char **argv);

@@ -14,7 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "core/esp_comm_manager.h"
 #include "core/serial_manager.h"
 #include "core/uart_share.h"
 #include "managers/status_display_manager.h"
@@ -765,10 +764,6 @@ void gps_manager_init(GPSManager *manager) {
         }
     }
 
-    if (!preserve_dualcomm || gps_disabled_comm_for_conflict) {
-        esp_comm_manager_deinit();
-    }
-
     gpio_reset_pin(current_rx_pin);
     vTaskDelay(pdMS_TO_TICKS(10));
 
@@ -872,7 +867,6 @@ void gps_manager_init(GPSManager *manager) {
         manager->isinitilized = false;
         gps_restore_serial_uart_if_released();
         if (!preserve_dualcomm || gps_disabled_comm_for_conflict) {
-            esp_comm_manager_init_with_defaults();
             gps_disabled_comm_for_conflict = false;
         }
         gps_lifecycle_end();
@@ -1148,7 +1142,6 @@ void gps_manager_deinit(GPSManager *manager) {
         gps_soft_mode_active = false;
         gps_restore_serial_uart_if_released();
         if (!gps_should_preserve_dualcomm() || gps_disabled_comm_for_conflict) {
-            esp_comm_manager_init_with_defaults();
             gps_disabled_comm_for_conflict = false;
         }
     } else {

@@ -7,9 +7,6 @@
 #ifdef CONFIG_HAS_AUDIO_PLAYER
 #include "managers/audio_stream_manager.h"
 #endif
-#ifdef CONFIG_HAS_TLV320DAC_I2S
-#include "managers/audio_receiver_manager.h"
-#endif
 #ifdef CONFIG_HAS_MIC
 #include "managers/microphone/mic_driver.h"
 #endif
@@ -39,33 +36,8 @@ void handle_audio_cmd(int argc, char **argv) {
     }
 #endif
 
-#ifdef CONFIG_HAS_TLV320DAC_I2S
-    if (strcmp(sub, "start") == 0) {
-        if (!audio_receiver_manager_is_initialized()) {
-            esp_err_t ret = audio_receiver_manager_init();
-            if (ret != ESP_OK) {
-                glog("Audio receiver init failed: %s\n", esp_err_to_name(ret));
-                return;
-            }
-        }
-        audio_receiver_manager_start();
-        glog("Audio receiver started\n");
-    } else if (strcmp(sub, "stop") == 0) {
-        audio_receiver_manager_stop();
-        glog("Audio receiver stopped\n");
-    } else if (strcmp(sub, "pause") == 0) {
-        audio_receiver_manager_pause();
-        glog("Audio receiver paused\n");
-    } else if (strcmp(sub, "flush") == 0) {
-        audio_receiver_manager_flush();
-        glog("Audio receiver flushed\n");
-    } else {
-        glog("Unknown audio command: %s\n", sub);
-    }
-#else
     (void)sub;
     glog("Audio not supported on this device\n");
-#endif
 }
 
 #ifdef CONFIG_HAS_MIC

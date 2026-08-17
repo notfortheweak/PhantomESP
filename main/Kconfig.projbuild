@@ -315,31 +315,6 @@ menu "Ghost ESP Options"
                 allowing you to plug in the device after selecting a payload.
                 Set to -1 to disable and execute immediately.
 
-        config HAS_BADUSB_REMOTE
-            bool "Enable BadUSB Remote (display menu only, routes via GhostLink)"
-            default n
-            depends on IDF_TARGET_ESP32C5
-            help
-                Enable the BadUSB display menu on a C5 display controller that routes
-                commands to a paired S3 via GhostLink/commsend. The C5 does not execute
-                scripts itself - it only provides the UI.
-
-        config HAS_NRF24_REMOTE
-            bool "Enable NRF24 Remote (display controls via GhostLink peer)"
-            default n
-            help
-                Enable NRF24 analyzer controls on a display controller that routes
-                commands to a paired NRF24-capable peer over GhostLink/commsend.
-                The display device does not scan RF directly - it only provides the UI.
-
-        config HAS_SUBGHZ_REMOTE
-            bool "Enable SubGHz Remote (display controls via GhostLink peer)"
-            default n
-            help
-                Enable SubGHz scanner controls on a display controller that routes
-                commands to a paired CC1101-capable peer over GhostLink/commsend.
-                The display device does not scan RF directly - it only provides the UI.
-
         config HAS_BATTERY
             bool "Enable power saving"
             default n

@@ -3139,8 +3139,10 @@ void hardware_input_task(void *pvParameters) {
 #if CONFIG_HAS_INFRARED
                             display_manager_switch_view(&infrared_view);
 #endif
+#if defined(CONFIG_HAS_BADUSB) || defined(CONFIG_HAS_BADUSB_REMOTE)
                         } else if (strcmp(cmd, "view:badusb") == 0) {
                             display_manager_switch_view(&badusb_view);
+#endif
                         } else if (strcmp(cmd, "view:gps") == 0) {
                             SelectedMenuType = OT_GPS;
                             display_manager_switch_view(&options_menu_view);
@@ -3157,8 +3159,10 @@ void hardware_input_task(void *pvParameters) {
                         } else if (strcmp(cmd, "view:nrf24") == 0) {
                             SelectedMenuType = OT_NRF24;
                             display_manager_switch_view(&options_menu_view);
+#if defined(CONFIG_HAS_SUBGHZ) || defined(CONFIG_HAS_SUBGHZ_REMOTE)
                         } else if (strcmp(cmd, "view:subghz") == 0) {
                             display_manager_switch_view(&subghz_view);
+#endif
                         } else if (strcmp(cmd, "view:settings") == 0) {
                             SelectedMenuType = OT_Settings;
                             display_manager_switch_view(&options_menu_view);
@@ -3193,8 +3197,10 @@ void hardware_input_task(void *pvParameters) {
 #if CONFIG_HAS_INFRARED
                             display_manager_switch_view(&infrared_view);
 #endif
+#if defined(CONFIG_HAS_BADUSB) || defined(CONFIG_HAS_BADUSB_REMOTE)
                         } else if (strcmp(cmd, "view:badusb") == 0) {
                             display_manager_switch_view(&badusb_view);
+#endif
                         } else if (strcmp(cmd, "view:gps") == 0) {
                             SelectedMenuType = OT_GPS;
                             display_manager_switch_view(&options_menu_view);
@@ -3211,8 +3217,10 @@ void hardware_input_task(void *pvParameters) {
                         } else if (strcmp(cmd, "view:nrf24") == 0) {
                             SelectedMenuType = OT_NRF24;
                             display_manager_switch_view(&options_menu_view);
+#if defined(CONFIG_HAS_SUBGHZ) || defined(CONFIG_HAS_SUBGHZ_REMOTE)
                         } else if (strcmp(cmd, "view:subghz") == 0) {
                             display_manager_switch_view(&subghz_view);
+#endif
                         } else if (strcmp(cmd, "view:settings") == 0) {
                             SelectedMenuType = OT_Settings;
                             display_manager_switch_view(&options_menu_view);
@@ -3247,8 +3255,10 @@ void hardware_input_task(void *pvParameters) {
 #if CONFIG_HAS_INFRARED
                             display_manager_switch_view(&infrared_view);
 #endif
+#if defined(CONFIG_HAS_BADUSB) || defined(CONFIG_HAS_BADUSB_REMOTE)
                         } else if (strcmp(cmd, "view:badusb") == 0) {
                             display_manager_switch_view(&badusb_view);
+#endif
                         } else if (strcmp(cmd, "view:gps") == 0) {
                             SelectedMenuType = OT_GPS;
                             display_manager_switch_view(&options_menu_view);
@@ -3265,8 +3275,10 @@ void hardware_input_task(void *pvParameters) {
                         } else if (strcmp(cmd, "view:nrf24") == 0) {
                             SelectedMenuType = OT_NRF24;
                             display_manager_switch_view(&options_menu_view);
+#if defined(CONFIG_HAS_SUBGHZ) || defined(CONFIG_HAS_SUBGHZ_REMOTE)
                         } else if (strcmp(cmd, "view:subghz") == 0) {
                             display_manager_switch_view(&subghz_view);
+#endif
                         } else if (strcmp(cmd, "view:settings") == 0) {
                             SelectedMenuType = OT_Settings;
                             display_manager_switch_view(&options_menu_view);

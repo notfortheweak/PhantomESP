@@ -3,7 +3,6 @@
 
 #include "core/commands.h"
 #include "core/glog.h"
-#include "core/esp_comm_manager.h"
 #include "managers/status_display_manager.h"
 #include "managers/subghz_remote_manager.h"
 #include "sdkconfig.h"
@@ -23,7 +22,7 @@ void handle_subghz_cmd(int argc, char **argv) {
     }
 
     const char *sub = argv[1];
-    bool remote_request = esp_comm_manager_is_remote_command();
+    bool remote_request = false;
 
 #if defined(CONFIG_WITH_SCREEN) && (defined(CONFIG_HAS_SUBGHZ) || defined(CONFIG_HAS_SUBGHZ_REMOTE))
     if (strcmp(sub, "state") == 0) {
@@ -40,7 +39,7 @@ void handle_subghz_cmd(int argc, char **argv) {
 #endif
 
 #ifdef CONFIG_HAS_SUBGHZ
-    bool stream_to_peer = remote_request && esp_comm_manager_is_connected();
+    bool stream_to_peer = remote_request && false;
 
     if (strcmp(sub, "start") == 0 || strcmp(sub, "waterfall_start") == 0) {
         bool waterfall_mode = (strcmp(sub, "waterfall_start") == 0);
@@ -60,14 +59,8 @@ void handle_subghz_cmd(int argc, char **argv) {
                  CONFIG_SUBGHZ_CSN_PIN,
                  CONFIG_SUBGHZ_GDO0_PIN,
                  CONFIG_SUBGHZ_GDO2_PIN);
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", waterfall_mode ? "state waterfall_started" : "state started");
-            }
         } else {
             glog("SubGHz scanner failed to start: %s\n", subghz_remote_manager_get_last_error());
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state error");
-            }
         }
         return;
     }
@@ -78,9 +71,6 @@ void handle_subghz_cmd(int argc, char **argv) {
             mic_resume();
 #endif
             glog("SubGHz scanner already stopped\n");
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state stopped");
-            }
             return;
         }
         subghz_remote_manager_stop();
@@ -94,32 +84,20 @@ void handle_subghz_cmd(int argc, char **argv) {
     if (strcmp(sub, "pause") == 0) {
         if (!subghz_remote_manager_is_running()) {
             glog("SubGHz scanner is not running\n");
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state error");
-            }
             return;
         }
         subghz_remote_manager_set_paused(true);
         glog("SubGHz scanner paused\n");
-        if (stream_to_peer) {
-            esp_comm_manager_send_command("subghz", "state paused");
-        }
         return;
     }
 
     if (strcmp(sub, "resume") == 0) {
         if (!subghz_remote_manager_is_running()) {
             glog("SubGHz scanner is not running\n");
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state error");
-            }
             return;
         }
         subghz_remote_manager_set_paused(false);
         glog("SubGHz scanner resumed\n");
-        if (stream_to_peer) {
-            esp_comm_manager_send_command("subghz", "state resumed");
-        }
         return;
     }
 
@@ -142,27 +120,18 @@ void handle_subghz_cmd(int argc, char **argv) {
     if (strcmp(sub, "capture_on") == 0) {
         subghz_remote_manager_set_raw_capture_enabled(true);
         glog("SubGHz raw capture enabled\n");
-        if (stream_to_peer) {
-            esp_comm_manager_send_command("subghz", "state capture_on");
-        }
         return;
     }
 
     if (strcmp(sub, "capture_off") == 0) {
         subghz_remote_manager_set_raw_capture_enabled(false);
         glog("SubGHz raw capture disabled\n");
-        if (stream_to_peer) {
-            esp_comm_manager_send_command("subghz", "state capture_off");
-        }
         return;
     }
 
     if (strcmp(sub, "capture_begin") == 0) {
         if (argc < 4) {
             glog("Usage: subghz capture_begin <normal|raw> <frequency_hz>\n");
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state capture_begin_error invalid arguments");
-            }
             return;
         }
 
@@ -172,40 +141,21 @@ void handle_subghz_cmd(int argc, char **argv) {
         uint32_t frequency_hz = (uint32_t)strtoul(argv[3], NULL, 10);
         if (!valid_mode || frequency_hz == 0) {
             glog("SubGHz capture begin failed: invalid arguments\n");
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state capture_begin_error invalid arguments");
-            }
             return;
         }
 
         if (!subghz_remote_manager_begin_capture(raw_mode, frequency_hz, stream_to_peer, 2000)) {
             glog("SubGHz capture begin failed: %s\n", subghz_remote_manager_get_last_error());
-            if (stream_to_peer) {
-                char state_cmd[128];
-                snprintf(state_cmd,
-                         sizeof(state_cmd),
-                         "state capture_begin_error %s",
-                         subghz_remote_manager_get_last_error());
-                esp_comm_manager_send_command("subghz", state_cmd);
-            }
             return;
         }
 
         glog("SubGHz capture armed: %s @ %s\n", mode, subghz_remote_manager_get_frequency_label());
-        if (stream_to_peer) {
-            esp_comm_manager_send_command("subghz", "state capture_begin_ok");
-        }
         return;
     }
 
     if (strcmp(sub, "cycle_freq") == 0) {
         subghz_remote_manager_cycle_frequency();
         glog("SubGHz freq: %s\n", subghz_remote_manager_get_frequency_label());
-        if (stream_to_peer) {
-            char state_cmd[64];
-            snprintf(state_cmd, sizeof(state_cmd), "state freq_%s", subghz_remote_manager_get_frequency_label());
-            esp_comm_manager_send_command("subghz", state_cmd);
-        }
         return;
     }
 
@@ -213,14 +163,8 @@ void handle_subghz_cmd(int argc, char **argv) {
         const char *name_hint = (argc >= 3) ? argv[2] : NULL;
         if (subghz_remote_manager_capture_snapshot(name_hint)) {
             glog("SubGHz snapshot captured: %s\n", subghz_remote_manager_get_active_snapshot_name());
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state capture_ok");
-            }
         } else {
             glog("SubGHz capture failed: %s\n", subghz_remote_manager_get_last_error());
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state capture_error");
-            }
         }
         return;
     }
@@ -230,14 +174,8 @@ void handle_subghz_cmd(int argc, char **argv) {
         char saved_path[192] = {0};
         if (subghz_remote_manager_save_snapshot(name_hint, saved_path, sizeof(saved_path))) {
             glog("SubGHz snapshot saved: %s\n", saved_path);
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state save_ok");
-            }
         } else {
             glog("SubGHz save failed: %s\n", subghz_remote_manager_get_last_error());
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state save_error");
-            }
         }
         return;
     }
@@ -246,14 +184,8 @@ void handle_subghz_cmd(int argc, char **argv) {
         const char *target = (argc >= 3) ? argv[2] : "last";
         if (subghz_remote_manager_load_snapshot(target)) {
             glog("SubGHz snapshot loaded: %s\n", subghz_remote_manager_get_active_snapshot_name());
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state load_ok");
-            }
         } else {
             glog("SubGHz load failed: %s\n", subghz_remote_manager_get_last_error());
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state load_error");
-            }
         }
         return;
     }
@@ -263,18 +195,12 @@ void handle_subghz_cmd(int argc, char **argv) {
         int n = subghz_remote_manager_list_snapshots(names, 12);
         if (n <= 0) {
             glog("No SubGHz snapshots found\n");
-            if (stream_to_peer) {
-                esp_comm_manager_send_command("subghz", "state list_empty");
-            }
             return;
         }
         int shown = (n < 12) ? n : 12;
         glog("SubGHz snapshots (%d total, showing %d):\n", n, shown);
         for (int i = 0; i < shown; i++) {
             glog("  %s\n", names[i]);
-        }
-        if (stream_to_peer) {
-            esp_comm_manager_send_command("subghz", "state list_ok");
         }
         return;
     }
@@ -286,9 +212,7 @@ void handle_subghz_cmd(int argc, char **argv) {
 #else
     glog("SubGHz not enabled on this build\n");
 #endif
-    if (remote_request && esp_comm_manager_is_connected()) {
-        esp_comm_manager_send_command("subghz", "state error");
-    }
+    (void)remote_request;
 #endif
 }
 

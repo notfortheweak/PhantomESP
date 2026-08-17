@@ -2,7 +2,6 @@
 // GPS commands: pin, baud rate, and info display.
 
 #include "core/commands.h"
-#include "core/esp_comm_manager.h"
 #include "core/glog.h"
 #include "managers/gps_manager.h"
 #include "managers/settings_manager.h"
@@ -128,16 +127,9 @@ void handle_gps_info(int argc, char **argv) {
         }
     } else {
         if (gps_info_task_handle == NULL) {
-            bool peer_connected = esp_comm_manager_is_connected();
-            gps_manager_set_peer_gps_preferred(peer_connected);
-            if (!peer_connected) {
-                gps_manager_clear_peer_fix();
-            }
-            if (!peer_connected) {
-                gps_manager_init(&g_gpsManager);
-            } else if (g_gpsManager.isinitilized) {
-                gps_manager_deinit(&g_gpsManager);
-            }
+            gps_manager_set_peer_gps_preferred(false);
+            gps_manager_clear_peer_fix();
+            gps_manager_init(&g_gpsManager);
 
             // Wait a moment for GPS initialization
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -192,13 +184,8 @@ void handle_gps_info(int argc, char **argv) {
             gps_info_task_handle = created_task;
             printf("GPS info started.\n");
             TERMINAL_VIEW_ADD_TEXT("GPS info started.\n");
-            if (peer_connected) {
-                printf("GPS source: peer stream preferred.\n");
-                TERMINAL_VIEW_ADD_TEXT("GPS source: peer stream preferred.\n");
-            } else {
-                printf("GPS source: local parser.\n");
-                TERMINAL_VIEW_ADD_TEXT("GPS source: local parser.\n");
-            }
+            printf("GPS source: local parser.\n");
+            TERMINAL_VIEW_ADD_TEXT("GPS source: local parser.\n");
             status_display_show_status("GPS Info On");
         }
     }

@@ -6,7 +6,6 @@
 
 #include "managers/views/badusb_view.h"
 #include "core/serial_manager.h"
-#include "core/esp_comm_manager.h"
 #include "gui/accessibility_fonts.h"
 #include "gui/lvgl_safe.h"
 #include "gui/screen_layout.h"
@@ -87,13 +86,6 @@ static void trackpad_send_local_move(int dx, int dy) {
 #endif
 }
 
-static void trackpad_send_remote_move(int dx, int dy) {
-    if (!esp_comm_manager_is_connected()) return;
-    char cmd[48];
-    snprintf(cmd, sizeof(cmd), "trackpad_move %d %d", dx, dy);
-    esp_comm_manager_send_command("badusb", cmd);
-}
-
 static void trackpad_send_local_button(uint8_t mask) {
 #ifdef CONFIG_HAS_BADUSB
     badusb_manager_trackpad_button(mask);
@@ -102,36 +94,13 @@ static void trackpad_send_local_button(uint8_t mask) {
 #endif
 }
 
-static void trackpad_send_remote_button(uint8_t mask) {
-    if (!esp_comm_manager_is_connected()) return;
-    char cmd[32];
-    snprintf(cmd, sizeof(cmd), "trackpad_button %u", (unsigned)mask);
-    esp_comm_manager_send_command("badusb", cmd);
-}
-
-static bool trackpad_is_remote(void) {
-#ifdef CONFIG_HAS_BADUSB_REMOTE
-    return true;
-#else
-    return false;
-#endif
-}
-
 static void trackpad_apply_move(int dx, int dy) {
     if (dx == 0 && dy == 0) return;
-    if (trackpad_is_remote()) {
-        trackpad_send_remote_move(dx, dy);
-    } else {
-        trackpad_send_local_move(dx, dy);
-    }
+    trackpad_send_local_move(dx, dy);
 }
 
 static void trackpad_apply_button(uint8_t mask) {
-    if (trackpad_is_remote()) {
-        trackpad_send_remote_button(mask);
-    } else {
-        trackpad_send_local_button(mask);
-    }
+    trackpad_send_local_button(mask);
 }
 
 static void trackpad_click_pulse(uint8_t btn_mask) {
@@ -193,13 +162,9 @@ static void trackpad_stop_and_exit(void) {
     s_joy_held_mask = 0;
     s_dir_key_held = 0;
     s_click = CK_IDLE;
-    if (trackpad_is_remote()) {
-        esp_comm_manager_send_command("badusb", "trackpad_stop");
-    } else {
 #ifdef CONFIG_HAS_BADUSB
-        badusb_manager_trackpad_stop();
+    badusb_manager_trackpad_stop();
 #endif
-    }
     View *back = s_return_view ? s_return_view : &badusb_view;
     display_manager_switch_view(back);
 }

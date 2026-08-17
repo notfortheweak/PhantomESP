@@ -25,7 +25,6 @@
 #include "managers/config_manager.h"
 #include "managers/settings_sd_backup.h"
 #include "managers/ota_manager.h"
-#include "managers/peer_ota_manager.h"
 #include "managers/self_ota_manager.h"
 #include "managers/wifi_manager.h"
 #include "managers/ap_manager.h"
@@ -44,7 +43,6 @@
 #include "scans/wifi/wpa3_compliance.h"
 #include "managers/ble_manager.h"
 #include "managers/status_display_manager.h"
-#include "managers/ble_bridge_manager.h"
 #include "scans/ble/advertiser_scan.h"
 #include "scans/ble/device_detect_scan.h"
 #include "scans/ble/gatt_scan.h"
@@ -150,15 +148,12 @@ static lv_timer_t *ota_status_poll_timer = NULL;
 static popup_confirm_t *ota_result_popup = NULL;
 static int64_t ota_status_started_us = 0;
 static bool ota_status_watch_device = false;
-static bool ota_status_watch_peer = false;
 static bool ota_status_watch_self = false;
 static char ota_last_self_failure_notice[128] = {0};
 typedef enum {
     OTA_UI_MODE_NONE = 0,
     OTA_UI_MODE_CHECK,
     OTA_UI_MODE_INSTALL,
-    OTA_UI_MODE_PEER_CHECK,
-    OTA_UI_MODE_PEER_INSTALL,
     OTA_UI_MODE_SD_INSTALL,
 } ota_ui_mode_t;
 static ota_ui_mode_t ota_ui_mode = OTA_UI_MODE_NONE;
@@ -590,7 +585,6 @@ static void ble_adv_set_subtext(int found_count) {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "managers/views/error_popup.h"
-#include "core/esp_comm_manager.h"
 #include "managers/views/main_menu_screen.h"
 #include "managers/views/terminal_screen.h"
 #include "managers/views/number_pad_screen.h"
@@ -645,11 +639,6 @@ static bool ota_state_busy(OtaState state) {
            state == OTA_STATE_VERIFYING;
 }
 
-static bool peer_ota_state_busy(PeerOtaState state) {
-    return state == PEER_OTA_STATE_CHECKING || state == PEER_OTA_STATE_SENDING ||
-           state == PEER_OTA_STATE_WAITING_PEER;
-}
-
 static bool self_ota_state_busy(SelfOtaState state) {
     return state == SELF_OTA_STATE_CHECKING || state == SELF_OTA_STATE_DOWNLOADING ||
            state == SELF_OTA_STATE_VERIFYING || state == SELF_OTA_STATE_FLASHING;
@@ -693,7 +682,6 @@ static void ota_status_close_overlay(void) {
     ota_ui_mode = OTA_UI_MODE_NONE;
     ota_status_started_us = 0;
     ota_status_watch_device = false;
-    ota_status_watch_peer = false;
     ota_status_watch_self = false;
 }
 
@@ -844,7 +832,7 @@ static void ota_status_show_pending_self_failure(void) {
 }
 
 static void ota_status_format_progress(char *out, size_t out_len,
-                                       OtaStatus ota, PeerOtaStatus peer, SelfOtaStatus self) {
+                                       OtaStatus ota, SelfOtaStatus self) {
     if (!out || out_len == 0) return;
     out[0] = '\0';
 
@@ -854,16 +842,6 @@ static void ota_status_format_progress(char *out, size_t out_len,
                      (unsigned)(ota.bytes_downloaded / 1024), (unsigned)(ota.image_size / 1024));
         } else {
             snprintf(out, out_len, "Device firmware");
-        }
-        return;
-    }
-
-    if (ota_status_watch_peer && peer_ota_state_busy(peer.state)) {
-        if (peer.total_bytes > 0 && peer.bytes_sent > 0) {
-            snprintf(out, out_len, "Peer firmware\n%u / %u KB",
-                     (unsigned)(peer.bytes_sent / 1024), (unsigned)(peer.total_bytes / 1024));
-        } else {
-            snprintf(out, out_len, "Peer firmware");
         }
         return;
     }
@@ -887,15 +865,13 @@ static void ota_status_poll_timer_cb(lv_timer_t *timer) {
     if (!ota_status_overlay) return;
 
     OtaStatus ota = ota_manager_get_status();
-    PeerOtaStatus peer = peer_ota_manager_get_status();
     SelfOtaStatus self = self_ota_manager_get_status();
 
     char progress[96];
-    ota_status_format_progress(progress, sizeof(progress), ota, peer, self);
+    ota_status_format_progress(progress, sizeof(progress), ota, self);
     if (progress[0]) scan_status_set_subtext(ota_status_overlay, progress);
 
     bool busy = (ota_status_watch_device && ota_state_busy(ota.state)) ||
-                (ota_status_watch_peer && peer_ota_state_busy(peer.state)) ||
                 (ota_status_watch_self && self_ota_state_busy(self.state));
     if (busy) return;
 
@@ -909,41 +885,26 @@ static void ota_status_poll_timer_cb(lv_timer_t *timer) {
     if (ota_status_watch_device && ota.state == OTA_STATE_FAILED) {
         title = "Update Failed";
         snprintf(body, sizeof(body), "%s", ota.error_msg[0] ? ota.error_msg : "Device update failed");
-    } else if (ota_status_watch_peer && peer.state == PEER_OTA_STATE_FAILED) {
-        title = "Peer Update Failed";
-        snprintf(body, sizeof(body), "%s", peer.error_msg[0] ? peer.error_msg : "Peer update failed");
     } else if (ota_status_watch_self && self.state == SELF_OTA_STATE_FAILED) {
         title = "Update Failed";
         snprintf(body, sizeof(body), "%s", self.error_msg[0] ? self.error_msg : "Device update failed");
-    } else if (ota_ui_mode == OTA_UI_MODE_CHECK || ota_ui_mode == OTA_UI_MODE_PEER_CHECK) {
+    } else if (ota_ui_mode == OTA_UI_MODE_CHECK) {
         bool have_local = (ota_status_watch_device && (ota.state == OTA_STATE_UPDATE_AVAILABLE)) ||
                           (ota_status_watch_self && (self.state == SELF_OTA_STATE_UPDATE_AVAILABLE));
-        bool have_peer = ota_status_watch_peer && (peer.state == PEER_OTA_STATE_UPDATE_AVAILABLE);
-        if (have_local || have_peer) {
+        if (have_local) {
             const char *device_version = ota_status_watch_device ? ota.latest_version : self.latest_version;
             long device_build = ota_status_watch_device ? ota.latest_build_number : self.latest_build_number;
             title = "Firmware Available";
-            if (have_local) {
-                ota_append_available_line(body, sizeof(body), "Device firmware", device_version,
-                                          device_build, (long)GHOSTESP_BUILD_NUMBER);
-            }
-            if (have_peer) {
-                ota_append_available_line(body, sizeof(body), "Peer firmware", peer.peer_version,
-                                          peer.peer_build_number, peer.peer_current_build_number);
-            }
+            ota_append_available_line(body, sizeof(body), "Device firmware", device_version,
+                                      device_build, (long)GHOSTESP_BUILD_NUMBER);
         } else {
             title = "No Firmware Found";
-            snprintf(body, sizeof(body), ota_ui_mode == OTA_UI_MODE_PEER_CHECK ?
-                     "No update for peer." :
-                     "No update for this device.");
+            snprintf(body, sizeof(body), "No update for this device.");
         }
-    } else if (ota_status_watch_peer && peer.state == PEER_OTA_STATE_DONE) {
-        title = "Peer Updated";
-        snprintf(body, sizeof(body), "Peer updated. Rebooting.");
     } else if (ota_status_watch_device && ota.state == OTA_STATE_READY_TO_REBOOT) {
         title = "Update Installed";
         snprintf(body, sizeof(body), "Firmware installed. Rebooting into the new image.");
-    } else if (ota_ui_mode == OTA_UI_MODE_INSTALL || ota_ui_mode == OTA_UI_MODE_PEER_INSTALL ||
+    } else if (ota_ui_mode == OTA_UI_MODE_INSTALL ||
                ota_ui_mode == OTA_UI_MODE_SD_INSTALL) {
         title = "No Update Started";
         snprintf(body, sizeof(body), "No update running. Check first.");
@@ -964,14 +925,6 @@ static void ota_status_start_overlay(ota_ui_mode_t mode, const char *title, cons
     ota_status_started_us = esp_timer_get_time();
     ota_status_watch_device = (mode == OTA_UI_MODE_CHECK || mode == OTA_UI_MODE_INSTALL ||
                                mode == OTA_UI_MODE_SD_INSTALL) && ota_manager_is_supported();
-    // OTA_UI_MODE_INSTALL is this board's own firmware only -- it never
-    // touches the peer (see SETTING_OTA_INSTALL_UPDATE), so it must not watch
-    // peer state here either. Otherwise a stale peer.state left over from an
-    // unrelated earlier peer check/update (or the automatic background
-    // check at boot) could surface as "Peer Update Failed" on a self-only
-    // install that never went near the peer.
-    ota_status_watch_peer = (mode == OTA_UI_MODE_PEER_CHECK || mode == OTA_UI_MODE_PEER_INSTALL) &&
-                            peer_ota_manager_is_supported();
     ota_status_watch_self = (mode == OTA_UI_MODE_CHECK || mode == OTA_UI_MODE_INSTALL) &&
                             self_ota_manager_is_supported();
     ota_status_overlay = scan_status_create(title ? title : "Firmware Update");
@@ -1004,7 +957,6 @@ typedef enum {
 #if defined(CONFIG_HAS_MIC) || defined(CONFIG_ENABLE_MIC_RGB_VISUALIZER)
     SETTINGS_CAT_MIC_RGB,
 #endif
-    SETTINGS_CAT_GHOSTLINK,
     SETTINGS_CAT_ACCESSIBILITY,
     SETTINGS_CAT_LOCKSCREEN,
     SETTINGS_CAT_WARDRIVING,
@@ -1067,7 +1019,6 @@ static SettingsCategory settings_categories[] = {
     {"Buttons", SETTINGS_CAT_IO_BUTTONS, SETTINGS_ROOT_CONTROLS, true, "CONFIG_USE_IO_EXPANDER"},
 #endif
     {"Wi-Fi", SETTINGS_CAT_NETWORK, SETTINGS_ROOT_CONNECTIVITY, false, NULL},
-    {"GhostLink", SETTINGS_CAT_GHOSTLINK, SETTINGS_ROOT_CONNECTIVITY, false, NULL},
     {"WiGLE", SETTINGS_CAT_WIGLE, SETTINGS_ROOT_DATA_TOOLS, false, NULL},
     {"Wardriving", SETTINGS_CAT_WARDRIVING, SETTINGS_ROOT_DATA_TOOLS, false, NULL},
     {"GPS", SETTINGS_CAT_GPS, SETTINGS_ROOT_DATA_TOOLS, false, NULL},
@@ -1352,7 +1303,7 @@ static const char * const wifi_scan_select_options[] = {
 };
 
 static const char * const wifi_environment_options[] = {
-    "Sweep", "Airspace Monitor", "PineAP Detection", "Flock Detection", "Channel Congestion",
+    "Sweep", "Airspace Monitor", "PineAP Detection", "Channel Congestion",
     "Packet Monitor", "Packet Visualizer", NULL
 };
 
@@ -1372,7 +1323,7 @@ static const char * const wifi_connection_options[] = {"Connect to WiFi", "Conne
 
 
 static const char * const wifi_main_options[] = {
-    "Scan & Select", "Environment", "Network", "Capture", "Connection", NULL
+    "Scan & Select", "Flock Detection", "Environment", "Network", "Capture", "Connection", NULL
 };
 
 static const char * const gps_options[] = {"Start Wardriving", "Stop Wardriving", "GPS Info",
@@ -1660,8 +1611,6 @@ static SettingsItem settings_items[] = {
     {"Update Channel", SETTING_OTA_CHANNEL, ota_channel_options, 2, 0, SETTINGS_CAT_FIRMWARE_UPDATE, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"Check Device Update", SETTING_OTA_CHECK_NOW, action_options, 1, 0, SETTINGS_CAT_FIRMWARE_UPDATE, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"Install Update", SETTING_OTA_INSTALL_UPDATE, action_options, 1, 0, SETTINGS_CAT_FIRMWARE_UPDATE, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
-    {"Check Peer Update", SETTING_OTA_CHECK_PEER, action_options, 1, 0, SETTINGS_CAT_FIRMWARE_UPDATE, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
-    {"Update Peer", SETTING_OTA_UPDATE_PEER, action_options, 1, 0, SETTINGS_CAT_FIRMWARE_UPDATE, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"Install from SD Card", SETTING_OTA_INSTALL_FROM_SD, action_options, 1, 0, SETTINGS_CAT_FIRMWARE_UPDATE, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
 #endif
 
@@ -1682,7 +1631,6 @@ static SettingsItem settings_items[] = {
     {"Mirror Mode", SETTING_MIC_MIRROR_MODE, bool_options, 2, 0, SETTINGS_CAT_MIC_RGB, true, "CONFIG_HAS_MIC or CONFIG_ENABLE_MIC_RGB_VISUALIZER", SETTING_WIDGET_TOGGLE},
     {"Calibrate", SETTING_MIC_CALIBRATE, action_options, 1, 0, SETTINGS_CAT_MIC_RGB, true, "CONFIG_HAS_MIC or CONFIG_ENABLE_MIC_RGB_VISUALIZER", SETTING_WIDGET_VALUE_CYCLE},
 #endif
-    {"Split Terminal", SETTING_GHOSTLINK_SPLIT_VIEW, bool_options, 2, 1, SETTINGS_CAT_GHOSTLINK, false, NULL, SETTING_WIDGET_TOGGLE},
     {"Font Size", SETTING_FONT_SIZE, font_size_options, 3, 1, SETTINGS_CAT_ACCESSIBILITY, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"High Contrast", SETTING_HIGH_CONTRAST, bool_options, 2, 0, SETTINGS_CAT_ACCESSIBILITY, false, NULL, SETTING_WIDGET_TOGGLE},
     {"Reduced Motion", SETTING_REDUCED_MOTION, bool_options, 2, 0, SETTINGS_CAT_ACCESSIBILITY, false, NULL, SETTING_WIDGET_TOGGLE},
@@ -1734,8 +1682,6 @@ static const char *settings_item_value_text(SettingsItem *item) {
 #if GHOSTESP_OTA_SUPPORTED
         case SETTING_OTA_CHECK_NOW:
         case SETTING_OTA_INSTALL_UPDATE:
-        case SETTING_OTA_CHECK_PEER:
-        case SETTING_OTA_UPDATE_PEER:
         case SETTING_OTA_INSTALL_FROM_SD:
             return "";
 #endif
@@ -1750,14 +1696,6 @@ static bool settings_item_is_visible(const SettingsItem *item) {
     if (!item) return false;
 #if GHOSTESP_OTA_SUPPORTED
     if (item->setting_type == SETTING_OTA_INSTALL_FROM_SD && !ota_sd_install_available()) {
-        return false;
-    }
-    // Peer (GhostLink relay) update rows only make sense on boards that
-    // actually relay to a peer -- currently only the somethingsomething C5.
-    // Hide them everywhere else instead of showing rows that just error out.
-    if ((item->setting_type == SETTING_OTA_CHECK_PEER ||
-         item->setting_type == SETTING_OTA_UPDATE_PEER) &&
-        !peer_ota_manager_is_supported()) {
         return false;
     }
 #endif
@@ -1807,7 +1745,6 @@ static const io_btn_preset_t io_btn_presets[] = {
     {"Clock", "view:clock", &clock_view},
     {"Apps", "view:apps", &apps_menu_view},
     {"Settings", "view:settings", &options_menu_view},
-    {"GhostLink", "view:ghostlink", &options_menu_view},
     {"Custom Command", "cmd:", NULL},
 };
 
@@ -3931,34 +3868,6 @@ static void apply_setting_change(int setting_index, int new_value) {
             ota_show_device_install_confirm();
             return;
         }
-        case SETTING_OTA_CHECK_PEER: {
-            if (!peer_ota_manager_is_supported()) {
-                ota_status_show_result("Peer Update", "No GhostLink peer configured for this board.");
-                return;
-            }
-            esp_err_t err = peer_ota_manager_check_now();
-            if (err == ESP_OK) {
-                ota_status_start_overlay(OTA_UI_MODE_PEER_CHECK, "Checking peer...", "Contacting update server");
-            } else {
-                ota_status_show_result("Peer Update", "GhostLink not connected.");
-            }
-            return;
-        }
-        case SETTING_OTA_UPDATE_PEER: {
-            if (!peer_ota_manager_is_supported()) {
-                ota_status_show_result("Peer Update", "No GhostLink peer configured for this board.");
-                return;
-            }
-            esp_err_t err = peer_ota_manager_start_update();
-            if (err == ESP_ERR_INVALID_STATE) {
-                ota_status_show_result("Peer Update", "GhostLink not connected.");
-            } else if (err == ESP_OK) {
-                ota_status_start_overlay(OTA_UI_MODE_PEER_INSTALL, "Updating peer...", "Streaming firmware over GhostLink");
-            } else {
-                ota_status_show_result("Peer Update", "Failed to start peer update.");
-            }
-            return;
-        }
         case SETTING_OTA_INSTALL_FROM_SD: {
             ota_show_sd_install_confirm();
             return;
@@ -4127,17 +4036,9 @@ static void apply_setting_change(int setting_index, int new_value) {
         case SETTING_MIC_MIRROR_MODE:
             settings_set_mic_mirror_mode(&G_Settings, new_value == 1);
             break;
-#if defined(CONFIG_HAS_MIC) || defined(CONFIG_ENABLE_MIC_RGB_VISUALIZER)
-        case SETTING_MIC_CALIBRATE:
 #ifdef CONFIG_HAS_MIC
+        case SETTING_MIC_CALIBRATE:
             settings_set_mic_calibrate(&G_Settings, true);
-#else
-            if (!esp_comm_manager_is_connected()) {
-                error_popup_create("Not connected to MIC device");
-                return;
-            }
-            simulateCommand("commsend mic_cal");
-#endif
             error_popup_create_persistent("Calibrating mic...\n\nPlease stay quiet!");
             lv_timer_create(mic_cal_done_timer_cb, 8500, NULL);
             return;
@@ -6301,18 +6202,7 @@ void option_event_cb(lv_event_t *e) {
             simulateCommand("commsend webuiap");
             view_switched = true;
         } else if (strcmp(Selected_Option, "BLE Bridge") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            bool enabled = ble_bridge_get_enabled() || ble_bridge_is_running();
-            if (ble_bridge_set_enabled(!enabled)) {
-                status_display_show_status(!enabled ? "BLE Bridge On" : "BLE Bridge Off");
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            }
-            error_popup_create("Failed to start BLE bridge");
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
+            error_popup_create("BLE Bridge has been removed.");
         } else if (strcmp(Selected_Option, "Start AirTag Scanner") == 0) {
 #ifndef CONFIG_IDF_TARGET_ESP32S2
             terminal_set_return_view(&options_menu_view);
@@ -6542,6 +6432,13 @@ void option_event_cb(lv_event_t *e) {
 
     if (SelectedMenuType == OT_Wifi) {
         if (current_wifi_menu_state == WIFI_MENU_MAIN) {
+            if (strcmp(Selected_Option, "Flock Detection") == 0) {
+                terminal_set_return_view(&options_menu_view);
+                display_manager_switch_view(&terminal_view);
+                simulateCommand("flockscan");
+                option_invoked = false;
+                return;
+            }
             if (strcmp(Selected_Option, "Scan & Select") == 0) current_wifi_menu_state = WIFI_MENU_SCAN_SELECT;
             else if (strcmp(Selected_Option, "Environment") == 0) current_wifi_menu_state = WIFI_MENU_ENVIRONMENT;
             else if (strcmp(Selected_Option, "Network") == 0) current_wifi_menu_state = WIFI_MENU_NETWORK;
@@ -12156,10 +12053,6 @@ static void menu_builder_cb(lv_timer_t *t)
                 }
                 lv_obj_set_height(btn, row_height);
                 options_view_relayout_item(g_options_view, btn);
-                if (SelectedMenuType == OT_DualComm && current_dualcomm_menu_state == DUALCOMM_MENU_BLE &&
-                    strcmp(opt, "BLE Bridge") == 0) {
-                    decorate_settings_row_with_toggle(btn, ble_bridge_get_enabled() || ble_bridge_is_running());
-                }
                 if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_CAPTURE_BROWSER) {
                     lv_obj_t *lbl = lv_obj_get_child(btn, 0);
                     if (lbl) lv_label_set_long_mode(lbl, LV_LABEL_LONG_SCROLL);

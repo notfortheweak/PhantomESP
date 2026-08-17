@@ -5,8 +5,6 @@
 
 #ifdef CONFIG_HAS_SUBGHZ
 
-#include "core/esp_comm_manager.h"
-
 #include "driver/gpio.h"
 #include "driver/rmt_tx.h"
 #include "driver/spi_master.h"
@@ -239,7 +237,6 @@ static void subghz_set_last_error(const char *msg);
 static void subghz_gdo0_isr_handler(void *arg);
 static void subghz_raw_timeout_cb(void *arg);
 static void subghz_stream_raw_capture(void);
-static void subghz_stream_rx_cb(uint8_t channel, const uint8_t *data, size_t length, void *user_data);
 static esp_err_t cc1101_write_reg(uint8_t reg, uint8_t value);
 static esp_err_t cc1101_write_patable(const uint8_t *data, size_t len);
 static esp_err_t subghz_apply_preset(subghz_preset_t preset);
@@ -548,163 +545,11 @@ static void subghz_raw_timeout_cb(void *arg) {
 }
 
 static void subghz_stream_raw_capture(void) {
-    if (!s_stream_to_peer || !esp_comm_manager_is_connected() || !s_raw_capture_pending || s_raw_stream_count == 0 ||
-        ((!s_capture_raw_mode_active) && s_decode_result_ready) || s_paused) {
-        ESP_LOGI(TAG, "stream_raw: skip pending=%d count=%lu online=%d", s_raw_capture_pending, (unsigned long)s_raw_stream_count, esp_comm_manager_is_connected());
-        return;
-    }
-
-    ESP_LOGI(TAG, "streaming raw capture: %lu durations", (unsigned long)s_raw_stream_count);
-
-    uint8_t start_pkt[4] = { SUBGHZ_STREAM_VERSION, 1, (uint8_t)(s_raw_stream_count & 0xFF),
-                             (uint8_t)((s_raw_stream_count >> 8) & 0xFF) };
-    if (!esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, start_pkt, sizeof(start_pkt))) {
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    size_t offset = 0;
-    while (offset < s_raw_stream_count) {
-        size_t chunk = s_raw_stream_count - offset;
-        if (chunk > 13) {
-            chunk = 13;
-        }
-
-        uint8_t pkt[5 + 13 * 4] = {0};
-        pkt[0] = SUBGHZ_STREAM_VERSION;
-        pkt[1] = 2;
-        pkt[2] = (uint8_t)(offset & 0xFF);
-        pkt[3] = (uint8_t)((offset >> 8) & 0xFF);
-        pkt[4] = (uint8_t)chunk;
-        for (size_t i = 0; i < chunk; i++) {
-            int32_t v = s_raw_stream_ptr[offset + i];
-            size_t base = 5 + i * 4;
-            pkt[base + 0] = (uint8_t)(v & 0xFF);
-            pkt[base + 1] = (uint8_t)((v >> 8) & 0xFF);
-            pkt[base + 2] = (uint8_t)((v >> 16) & 0xFF);
-            pkt[base + 3] = (uint8_t)((v >> 24) & 0xFF);
-        }
-        if (!esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, pkt, 5 + chunk * 4)) {
-            return;
-        }
-        vTaskDelay(pdMS_TO_TICKS(20));
-        offset += chunk;
-    }
-
-    uint8_t end_pkt[2] = { SUBGHZ_STREAM_VERSION, 3 };
-    (void)esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, end_pkt, sizeof(end_pkt));
+    // GhostLink peer streaming removed; local capture is unaffected.
 }
 
 static void subghz_stream_decoded_result(void) {
-    const subghz_stream_decoder_t *res = subghz_engine_get_result(&s_decoder_engine);
-    if (!res) return;
-
-    char info[SUBGHZ_DECODED_INFO_MAX] = {0};
-    subghz_stream_decoder_format_result(res, info, sizeof(info));
-
-    uint8_t name_len = 0;
-    while (res->name[name_len] && name_len < 31) name_len++;
-
-    uint8_t pkt[2 + 1 + 8 + 1 + name_len + 1 + 4];
-    size_t pos = 0;
-    pkt[pos++] = SUBGHZ_STREAM_VERSION;
-    pkt[pos++] = 9;
-    pkt[pos++] = name_len;
-    memcpy(pkt + pos, res->name, name_len); pos += name_len;
-    uint64_t code = res->code;
-    for (int i = 0; i < 8; i++) pkt[pos++] = (uint8_t)(code >> (i * 8));
-    pkt[pos++] = (uint8_t)res->bits;
-    uint32_t freq = s_current_freq_hz;
-    pkt[pos++] = (uint8_t)(freq & 0xFF);
-    pkt[pos++] = (uint8_t)((freq >> 8) & 0xFF);
-    pkt[pos++] = (uint8_t)((freq >> 16) & 0xFF);
-    pkt[pos++] = (uint8_t)((freq >> 24) & 0xFF);
-
-    (void)esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, pkt, pos);
-    ESP_LOGI(TAG, "streamed decoded: %s %dbit code=0x%llX freq=%u",
-             res->name, res->bits, (unsigned long long)res->code, (unsigned)freq);
-}
-
-static void subghz_stream_rx_cb(uint8_t channel, const uint8_t *data, size_t length, void *user_data) {
-    (void)channel;
-    (void)user_data;
-    if (!data || length < 2) return;
-    uint8_t ver = data[0];
-    if (ver != SUBGHZ_STREAM_VERSION && ver != 1) return;
-
-    uint8_t packet_type = data[1];
-
-    /* v2 REPLAY_BEGIN (0x10) or legacy start (4) */
-    if (packet_type == 0x10 || packet_type == 4) {
-        if (packet_type == 0x10 && length >= 8) {
-            s_rx_stream_expected = (size_t)data[2] | ((size_t)data[3] << 8) |
-                                    ((size_t)data[4] << 16) | ((size_t)data[5] << 24);
-            s_rx_stream_freq_hz = (uint32_t)data[6] |
-                                  ((uint32_t)data[7] << 8) |
-                                  ((uint32_t)data[8] << 16) |
-                                  ((uint32_t)data[9] << 0x18);
-            if (length >= 11) {
-                uint8_t pb = data[10];
-                if (pb == 1) s_rx_stream_preset = SUBGHZ_PRESET_OOK650_ASYNC;
-                else if (pb == 2) s_rx_stream_preset = SUBGHZ_PRESET_2FSK_DEV238_ASYNC;
-                else if (pb == 3) s_rx_stream_preset = SUBGHZ_PRESET_2FSK_DEV476_ASYNC;
-                else if (pb == 4) s_rx_stream_preset = SUBGHZ_PRESET_CUSTOM;
-                else s_rx_stream_preset = SUBGHZ_PRESET_OOK270_ASYNC;
-            }
-        } else if (length >= 4) {
-            s_rx_stream_expected = (size_t)data[2] | ((size_t)data[3] << 8);
-            s_rx_stream_freq_hz = 0;
-            s_rx_stream_preset = SUBGHZ_PRESET_OOK270_ASYNC;
-            if (length >= 8) {
-                s_rx_stream_freq_hz = (uint32_t)data[4] |
-                                      ((uint32_t)data[5] << 8) |
-                                      ((uint32_t)data[6] << 16) |
-                                      ((uint32_t)data[7] << 0x18);
-            }
-            if (length >= 9) {
-                s_rx_stream_preset = (data[8] == 1) ? SUBGHZ_PRESET_OOK650_ASYNC : SUBGHZ_PRESET_OOK270_ASYNC;
-            }
-        } else {
-            return;
-        }
-        if (s_rx_stream_expected > SUBGHZ_RAW_MAX_DURATIONS) s_rx_stream_expected = SUBGHZ_RAW_MAX_DURATIONS;
-        s_rx_stream_received = 0;
-        if (s_rx_stream_freq_hz == 0) s_rx_stream_freq_hz = 433920000;
-        return;
-    }
-    if (packet_type == 0x11 || packet_type == 5) {
-        if (length < 5) return;
-        size_t offset = (size_t)data[2] | ((size_t)data[3] << 8);
-        size_t count = (size_t)data[4];
-        if (length < 5 + count * 4 || offset + count > SUBGHZ_RAW_MAX_DURATIONS) {
-            ESP_LOGE(TAG, "Stream chunk DROPPED: bounds check fail");
-            return;
-        }
-        for (size_t i = 0; i < count; i++) {
-            size_t base = 5 + i * 4;
-            s_shared_buf[offset + i] = (int32_t)((uint32_t)data[base] |
-                                                    ((uint32_t)data[base + 1] << 8) |
-                                                    ((uint32_t)data[base + 2] << 16) |
-                                                    ((uint32_t)data[base + 3] << 24));
-        }
-        if (offset + count > s_rx_stream_received) s_rx_stream_received = offset + count;
-        if (offset == 0 && count > 0) {
-            ESP_LOGD(TAG, "Stream chunk[0]: count=%u first4=%ld %ld %ld %ld",
-                     (unsigned)count,
-                     (long)s_shared_buf[0], (long)s_shared_buf[1],
-                     (long)s_shared_buf[2], (long)s_shared_buf[3]);
-        }
-        return;
-    }
-    if (packet_type == 0x12 || packet_type == 6) {
-        if (s_rx_stream_received > 0) {
-            ESP_LOGD(TAG, "Stream TX trigger: %lu durations, first4=%ld %ld %ld %ld",
-                     (unsigned long)s_rx_stream_received,
-                     (long)s_shared_buf[0], (long)s_shared_buf[1],
-                     (long)s_shared_buf[2], (long)s_shared_buf[3]);
-            (void)subghz_remote_manager_transmit_raw(s_shared_buf, s_rx_stream_received, s_rx_stream_freq_hz, s_rx_stream_preset);
-        }
-    }
+    // GhostLink peer streaming removed; local decode is unaffected.
 }
 
 static bool subghz_validate_pin_config(void) {
@@ -1143,74 +988,18 @@ static bool subghz_sample_rssi_waterfall_line(uint8_t *out_levels, uint8_t count
 static uint8_t s_wf_band_idx = 0;
 
 static void subghz_stream_chunk(uint8_t cursor, uint8_t start_ch, uint8_t count) {
-    if (!s_stream_to_peer || !esp_comm_manager_is_connected() || count == 0) {
-        return;
-    }
-
-    if (count > 32) {
-        count = 32;
-    }
-
-    uint8_t pkt[7 + 32] = {0};
-    pkt[0] = SUBGHZ_STREAM_VERSION;
-    pkt[1] = 0;
-    pkt[2] = cursor;
-    pkt[3] = start_ch;
-    pkt[4] = count;
-    pkt[5] = s_current_freq_idx;
-    pkt[6] = (uint8_t)(s_current_freq_hz & 0xFF);
-
-    if (s_data_mutex) {
-        xSemaphoreTake(s_data_mutex, portMAX_DELAY);
-    }
-    for (uint8_t i = 0; i < count; i++) {
-        uint8_t ch = (uint8_t)((start_ch + i) % SUBGHZ_SCANNER_CHANNEL_COUNT);
-        pkt[7 + i] = s_levels[ch];
-    }
-    if (s_data_mutex) {
-        xSemaphoreGive(s_data_mutex);
-    }
-
-    (void)esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, pkt, (size_t)(7 + count));
+    // GhostLink peer streaming removed; local scan data stays on-device.
+    (void)cursor;
+    (void)start_ch;
+    (void)count;
 }
 
 static void subghz_stream_waterfall_line(uint8_t freq_idx, const uint8_t *line, uint8_t count, uint16_t seq) {
-    if (!s_stream_to_peer || !esp_comm_manager_is_connected() || !line || count == 0) {
-        return;
-    }
-    if (count > SUBGHZ_SCANNER_CHANNEL_COUNT) {
-        count = SUBGHZ_SCANNER_CHANNEL_COUNT;
-    }
-
-    if (seq == 1 || (seq % 32U) == 0U) {
-        uint8_t peak = 0;
-        for (uint8_t i = 0; i < count; i++) {
-            if (line[i] > peak) {
-                peak = line[i];
-            }
-        }
-        ESP_LOGI(TAG, "waterfall tx seq=%u freq_idx=%u bins=%u peak=%u", (unsigned)seq, (unsigned)freq_idx, (unsigned)count, (unsigned)peak);
-    }
-
-    uint8_t offset = 0;
-    while (offset < count) {
-        uint8_t chunk = (uint8_t)(count - offset);
-        if (chunk > 32) {
-            chunk = 32;
-        }
-        uint8_t pkt[8 + 32] = {0};
-        pkt[0] = SUBGHZ_STREAM_VERSION;
-        pkt[1] = SUBGHZ_STREAM_WATERFALL_CHUNK;
-        pkt[2] = count;
-        pkt[3] = freq_idx;
-        pkt[4] = (uint8_t)(seq & 0xFF);
-        pkt[5] = (uint8_t)((seq >> 8) & 0xFF);
-        pkt[6] = offset;
-        pkt[7] = chunk;
-        memcpy(pkt + 8, line + offset, chunk);
-        (void)esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, pkt, (size_t)(8 + chunk));
-        offset = (uint8_t)(offset + chunk);
-    }
+    // GhostLink peer streaming removed; local waterfall stays on-device.
+    (void)freq_idx;
+    (void)line;
+    (void)count;
+    (void)seq;
 }
 
 static void subghz_decoder_task(void *arg) {
@@ -1276,9 +1065,6 @@ static void subghz_scan_task(void *arg) {
     xTaskCreatePinnedToCore(subghz_decoder_task, "subghz_dec", 5120, NULL, 15, &s_decoder_task, 1);
 
     if (subghz_hw_start() != ESP_OK) {
-        if (s_stream_to_peer && esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("subghz", "state error");
-        }
         s_decoder_task_running = false;
         if (s_decoder_task) { vTaskDelete(s_decoder_task); s_decoder_task = NULL; }
         if (s_edge_queue) { vQueueDelete(s_edge_queue); s_edge_queue = NULL; }
@@ -1290,7 +1076,7 @@ static void subghz_scan_task(void *arg) {
     bool skip_initial_freq_cycle = true;
 
     while (!s_stop_requested) {
-        if (!s_capture_raw_mode_active && s_decode_result_ready && s_stream_to_peer && esp_comm_manager_is_connected()) {
+        if (!s_capture_raw_mode_active && s_decode_result_ready && s_stream_to_peer && false) {
             subghz_stream_decoded_result();
             s_decode_result_ready = false;
             subghz_engine_reset(&s_decoder_engine);
@@ -1430,9 +1216,6 @@ static void subghz_scan_task(void *arg) {
     }
 
     subghz_hw_stop();
-    if (s_stream_to_peer && esp_comm_manager_is_connected()) {
-        esp_comm_manager_send_command("subghz", "state stopped");
-    }
 
     s_subghz_task = NULL;
     vTaskDelete(NULL);
@@ -1966,7 +1749,7 @@ tx_cleanup:
 }
 
 void subghz_remote_manager_register_stream_handler(void) {
-    (void)esp_comm_manager_register_stream_handler(COMM_STREAM_CHANNEL_SUBGHZ, subghz_stream_rx_cb, NULL);
+    // GhostLink peer streaming removed; kept as a no-op for its boot call site.
 }
 
 void subghz_remote_manager_set_raw_capture_enabled(bool enabled) {

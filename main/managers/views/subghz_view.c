@@ -5,7 +5,6 @@
 
 #if defined(CONFIG_HAS_SUBGHZ) || defined(CONFIG_HAS_SUBGHZ_REMOTE)
 
-#include "core/esp_comm_manager.h"
 #include "gui/lvgl_safe.h"
 #include "gui/options_view.h"
 #include "gui/popup.h"
@@ -1419,59 +1418,12 @@ static size_t subghz_sanitize_pulses(int32_t *durations, size_t count) {
 }
 
 static bool subghz_send_remote_replay(const int32_t *durations, size_t count, uint32_t freq_hz, subghz_preset_t preset) {
-    if (!esp_comm_manager_is_connected() || !durations || count == 0) {
-        return false;
-    }
-
-    uint8_t preset_byte = 0;
-    if (preset == SUBGHZ_PRESET_OOK650_ASYNC) preset_byte = 1;
-    else if (preset == SUBGHZ_PRESET_2FSK_DEV238_ASYNC) preset_byte = 2;
-    else if (preset == SUBGHZ_PRESET_2FSK_DEV476_ASYNC) preset_byte = 3;
-    else if (preset == SUBGHZ_PRESET_CUSTOM) preset_byte = 4;
-
-    uint8_t start_pkt[13] = {
-        SUBGHZ_STREAM_VERSION, 0x10,
-        (uint8_t)(count & 0xFF), (uint8_t)((count >> 8) & 0xFF),
-        (uint8_t)((count >> 16) & 0xFF), (uint8_t)((count >> 24) & 0xFF),
-        (uint8_t)(freq_hz & 0xFF), (uint8_t)((freq_hz >> 8) & 0xFF),
-        (uint8_t)((freq_hz >> 16) & 0xFF), (uint8_t)((freq_hz >> 24) & 0xFF),
-        preset_byte, 0, 0
-    };
-    if (!esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, start_pkt, sizeof(start_pkt))) {
-        return false;
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    size_t offset = 0;
-    while (offset < count) {
-        size_t chunk = count - offset;
-        if (chunk > 13) {
-            chunk = 13;
-        }
-        uint8_t pkt[5 + 13 * 4] = {0};
-        pkt[0] = SUBGHZ_STREAM_VERSION;
-        pkt[1] = 0x11;
-        pkt[2] = (uint8_t)(offset & 0xFF);
-        pkt[3] = (uint8_t)((offset >> 8) & 0xFF);
-        pkt[4] = (uint8_t)chunk;
-        for (size_t i = 0; i < chunk; i++) {
-            int32_t v = durations[offset + i];
-            size_t base = 5 + i * 4;
-            pkt[base + 0] = (uint8_t)(v & 0xFF);
-            pkt[base + 1] = (uint8_t)((v >> 8) & 0xFF);
-            pkt[base + 2] = (uint8_t)((v >> 16) & 0xFF);
-            pkt[base + 3] = (uint8_t)((v >> 24) & 0xFF);
-        }
-        if (!esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, pkt, 5 + chunk * 4)) {
-            return false;
-        }
-        vTaskDelay(pdMS_TO_TICKS(20));
-        offset += chunk;
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(20));
-    uint8_t end_pkt[2] = { SUBGHZ_STREAM_VERSION, 0x12 };
-    return esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_SUBGHZ, end_pkt, sizeof(end_pkt));
+    // GhostLink peer removed; local-only replay is handled elsewhere.
+    (void)durations;
+    (void)count;
+    (void)freq_hz;
+    (void)preset;
+    return false;
 }
 
 static void subghz_graph_draw_event(lv_event_t *e) {
@@ -1579,7 +1531,7 @@ static void subghz_refresh_status_labels(void) {
     if (s_remote_mode) {
         if (s_remote_error) {
             lv_label_set_text(s_status_label, "Peer error");
-        } else if (!esp_comm_manager_is_connected()) {
+        } else if (!false) {
             lv_label_set_text(s_status_label, "GhostLink disconnected");
         } else if (!s_remote_stream_online) {
             lv_label_set_text(s_status_label, "Waiting for peer stream...");
@@ -1698,9 +1650,6 @@ static void subghz_list_snapshots_action(void) {
 static void subghz_close_popup(bool stop_scan) {
     if (stop_scan) {
         if (s_remote_mode) {
-            if (esp_comm_manager_is_connected()) {
-                (void)esp_comm_manager_send_command("subghz", "stop");
-            }
         } else {
             subghz_remote_manager_stop();
         }
@@ -1718,19 +1667,10 @@ static void subghz_close_popup(bool stop_scan) {
 
 static void subghz_start_scan(void) {
     if (s_remote_mode) {
-        if (!esp_comm_manager_is_connected()) {
-            s_remote_error = true;
-            subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
-            subghz_refresh_status_labels();
-            return;
-        }
-        if (esp_comm_manager_send_command("subghz", "start")) {
-            s_remote_stream_online = false;
-            s_remote_error = false;
-            s_remote_paused = false;
-        } else {
-            s_remote_error = true;
-        }
+        s_remote_error = true;
+        subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
+        subghz_refresh_status_labels();
+        return;
     } else {
         if (!subghz_remote_manager_start(false)) {
             ESP_LOGW(TAG, "Failed to start local scanner: %s", subghz_remote_manager_get_last_error());
@@ -1743,9 +1683,6 @@ static void subghz_start_scan(void) {
 
 static void subghz_stop_scan(void) {
     if (s_remote_mode) {
-        if (esp_comm_manager_is_connected()) {
-            (void)esp_comm_manager_send_command("subghz", "stop");
-        }
         s_remote_paused = true;
         s_remote_stream_online = false;
     } else {
@@ -1761,26 +1698,17 @@ static void subghz_close_capture_popup(void) {
     }
 
     if (s_remote_mode) {
-        if (esp_comm_manager_is_connected()) {
-            (void)esp_comm_manager_send_command("subghz", "capture_off");
-        }
     } else {
         subghz_remote_manager_set_raw_capture_enabled(false);
     }
 
     if (!s_capture_was_running) {
         if (s_remote_mode) {
-            if (esp_comm_manager_is_connected()) {
-                (void)esp_comm_manager_send_command("subghz", "stop");
-            }
         } else {
             subghz_remote_manager_stop();
         }
     } else if (s_capture_ready) {
         if (s_remote_mode) {
-            if (esp_comm_manager_is_connected()) {
-                (void)esp_comm_manager_send_command("subghz", "resume");
-            }
         } else {
             subghz_remote_manager_set_paused(false);
         }
@@ -1878,39 +1806,12 @@ static void subghz_capture_set_frequency_index(uint8_t idx) {
 }
 
 static bool subghz_capture_begin_remote(bool defer_popup_open) {
-    if (!esp_comm_manager_is_connected()) {
-        s_capture_remote_arm_pending = false;
-        s_capture_defer_popup_open = false;
-        subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
-        return false;
-    }
-
-    uint8_t freq_idx = subghz_capture_get_frequency_index();
-    uint32_t frequency_hz = s_scan_freqs_hz[freq_idx];
-    char cmd[64];
-    snprintf(cmd,
-             sizeof(cmd),
-             "capture_begin %s %lu",
-             (s_capture_mode == SUBGHZ_CAPTURE_MODE_RAW) ? "raw" : "normal",
-             (unsigned long)frequency_hz);
-
-    ESP_LOGI(TAG, "sending remote capture cmd='%s' defer_popup=%d", cmd, defer_popup_open ? 1 : 0);
-
-    if (!esp_comm_manager_send_command("subghz", cmd)) {
-        s_capture_remote_arm_pending = false;
-        s_capture_defer_popup_open = false;
-        s_remote_error = true;
-        subghz_show_feedback_popup("SubGHz error", "Failed to send remote capture command");
-        return false;
-    }
-
-    s_capture_remote_arm_pending = true;
-    s_capture_defer_popup_open = defer_popup_open;
-    s_remote_error = false;
-    s_remote_paused = false;
-    subghz_set_pending_action(SUBGHZ_PENDING_CAPTURE, 3000);
-    subghz_show_action_status("Arming remote capture...");
-    return true;
+    // GhostLink peer removed -- there is no peer to arm a remote capture on.
+    (void)defer_popup_open;
+    s_capture_remote_arm_pending = false;
+    s_capture_defer_popup_open = false;
+    subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
+    return false;
 }
 
 static void subghz_fa_apply_popup_selection(void) {
@@ -2076,18 +1977,9 @@ static void subghz_fa_graph_draw_event(lv_event_t *e) {
 
 static void subghz_fa_start_scan(void) {
     if (s_remote_mode) {
-        if (!esp_comm_manager_is_connected()) {
-            s_remote_error = true;
-            subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
-            return;
-        }
-        if (esp_comm_manager_send_command("subghz", "start")) {
-            s_remote_stream_online = false;
-            s_remote_error = false;
-            s_remote_paused = false;
-        } else {
-            s_remote_error = true;
-        }
+        s_remote_error = true;
+        subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
+        return;
     } else {
         if (!subghz_remote_manager_start(false)) {
             subghz_show_feedback_popup("SubGHz error", subghz_remote_manager_get_last_error());
@@ -2101,9 +1993,6 @@ static void subghz_fa_start_scan(void) {
 
 static void subghz_fa_stop_scan(void) {
     if (s_remote_mode) {
-        if (esp_comm_manager_is_connected()) {
-            (void)esp_comm_manager_send_command("subghz", "stop");
-        }
         s_remote_paused = true;
         s_remote_stream_online = false;
     } else {
@@ -2480,19 +2369,10 @@ static void subghz_wf_apply_popup_selection(void) {
 
 static void subghz_wf_start_scan(void) {
     if (s_remote_mode) {
-        if (!esp_comm_manager_is_connected()) {
-            s_remote_error = true;
-            subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
-            subghz_wf_set_freq_label(s_remote_freq_idx);
-            return;
-        }
-        if (esp_comm_manager_send_command("subghz", "waterfall_start")) {
-            s_remote_stream_online = false;
-            s_remote_error = false;
-            s_remote_paused = false;
-        } else {
-            s_remote_error = true;
-        }
+        s_remote_error = true;
+        subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
+        subghz_wf_set_freq_label(s_remote_freq_idx);
+        return;
     } else {
         if (!subghz_remote_manager_start_waterfall(false)) {
             ESP_LOGW(TAG, "Failed to start local waterfall scanner: %s", subghz_remote_manager_get_last_error());
@@ -2534,9 +2414,6 @@ static void subghz_wf_start_scan(void) {
 
 static void subghz_wf_stop_scan(void) {
     if (s_remote_mode) {
-        if (esp_comm_manager_is_connected()) {
-            (void)esp_comm_manager_send_command("subghz", "waterfall_stop");
-        }
         s_remote_paused = true;
         s_remote_stream_online = false;
     } else {
@@ -2807,14 +2684,6 @@ static void subghz_capture_primary_btn_cb(lv_event_t *e) {
         }
     } else {
         if (s_remote_mode) {
-            if (esp_comm_manager_is_connected()) {
-                ESP_LOGI(TAG,
-                         "remote capture stop requested mode=%s raw_count=%lu",
-                         (s_capture_mode == SUBGHZ_CAPTURE_MODE_RAW) ? "raw" : "normal",
-                         (unsigned long)s_capture_raw_count);
-                (void)esp_comm_manager_send_command("subghz", "capture_off");
-                (void)esp_comm_manager_send_command("subghz", "pause");
-            }
             if (s_capture_mode == SUBGHZ_CAPTURE_MODE_RAW) {
                 s_capture_stop_pending = true;
                 s_capture_stop_deadline_us = esp_timer_get_time() + 1500000LL;
@@ -2882,7 +2751,7 @@ static void subghz_capture_freq_btn_cb(lv_event_t *e) {
     subghz_capture_popup_update_buttons();
 
     if (s_remote_mode) {
-        if (!esp_comm_manager_is_connected()) {
+        if (!false) {
             subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
             return;
         }
@@ -3007,7 +2876,7 @@ static void subghz_open_capture_popup(void) {
 
     subghz_capture_refresh_frequency_label();
 
-    if (s_remote_mode && !esp_comm_manager_is_connected()) {
+    if (s_remote_mode && !false) {
         subghz_show_feedback_popup("SubGHz error", "GhostLink disconnected");
         subghz_close_capture_popup();
         return;
@@ -3126,9 +2995,6 @@ static void subghz_capture_mark_ready_with_decoded(const subghz_decoded_signal_t
     subghz_capture_popup_update_buttons();
 
     if (s_remote_mode) {
-        if (esp_comm_manager_is_connected()) {
-            (void)esp_comm_manager_send_command("subghz", "pause");
-        }
     } else {
         subghz_remote_manager_set_paused(true);
     }
@@ -3368,7 +3234,7 @@ static void subghz_timer_cb(lv_timer_t *timer) {
     }
 
     if (s_remote_mode) {
-        if (!esp_comm_manager_is_connected()) {
+        if (!false) {
             s_remote_stream_online = false;
             if (s_pending_action != SUBGHZ_PENDING_NONE) {
                 subghz_fail_pending_action("GhostLink disconnected");
@@ -3580,311 +3446,8 @@ static void subghz_timer_cb(lv_timer_t *timer) {
     }
 }
 
-static void subghz_stream_rx_cb(uint8_t channel, const uint8_t *data, size_t length, void *user_data) {
-    (void)channel;
-    (void)user_data;
-
-    if (!data || length < 2) {
-        return;
-    }
-    uint8_t ver = data[0];
-    if (ver != SUBGHZ_STREAM_VERSION && ver != 1) {
-        return;
-    }
-
-    uint8_t packet_type = data[1];
-
-    /* v2 stream begin (0x10), replay legacy (4), or raw capture legacy (1) */
-    if (packet_type == 0x10 || packet_type == 4 || packet_type == 1) {
-        if (packet_type == 0x10 && length >= 8) {
-            s_remote_raw_expected = (size_t)data[2] | ((size_t)data[3] << 8) |
-                                    ((size_t)data[4] << 16) | ((size_t)data[5] << 24);
-        } else if (length >= 4) {
-            s_remote_raw_expected = (size_t)data[2] | ((size_t)data[3] << 8);
-        } else {
-            return;
-        }
-        if (s_remote_raw_expected > SUBGHZ_RAW_MAX_DURATIONS) {
-            s_remote_raw_expected = SUBGHZ_RAW_MAX_DURATIONS;
-        }
-        s_remote_raw_received = 0;
-        return;
-    }
-
-    if (packet_type == 0x11 || packet_type == 5 || packet_type == 2) {
-        if (length < 5) {
-            return;
-        }
-        size_t offset = (size_t)data[2] | ((size_t)data[3] << 8);
-        size_t count = (size_t)data[4];
-        if (length < 5 + count * 4 || offset + count > SUBGHZ_RAW_MAX_DURATIONS) {
-            return;
-        }
-        for (size_t i = 0; i < count; i++) {
-            size_t base = 5 + i * 4;
-            int32_t v = (int32_t)((uint32_t)data[base] |
-                                  ((uint32_t)data[base + 1] << 8) |
-                                  ((uint32_t)data[base + 2] << 16) |
-                                  ((uint32_t)data[base + 3] << 24));
-            s_remote_raw_work[offset + i] = v;
-        }
-        if (offset + count > s_remote_raw_received) {
-            s_remote_raw_received = offset + count;
-        }
-        return;
-    }
-
-    if (packet_type == 0x12 || packet_type == 6 || packet_type == 3) {
-        if (s_remote_raw_received > 0) {
-            size_t new_count = s_remote_raw_received;
-            if (new_count > SUBGHZ_RAW_MAX_DURATIONS) {
-                new_count = SUBGHZ_RAW_MAX_DURATIONS;
-            }
-            if (s_capture_popup && lv_obj_is_valid(s_capture_popup) && s_capture_waiting_signal) {
-                if (s_capture_mode == SUBGHZ_CAPTURE_MODE_RAW) {
-                    ESP_LOGI(TAG,
-                             "received remote raw end packet new_count=%lu stop_pending=%d",
-                             (unsigned long)new_count,
-                             s_capture_stop_pending ? 1 : 0);
-                    if (s_capture_raw_count + new_count <= SUBGHZ_RAW_MAX_DURATIONS) {
-                        memcpy(s_capture_raw + s_capture_raw_count, s_remote_raw_work, new_count * sizeof(int32_t));
-                        s_capture_raw_count += new_count;
-                    } else {
-                        s_capture_raw_count = new_count;
-                        memcpy(s_capture_raw, s_remote_raw_work, s_capture_raw_count * sizeof(int32_t));
-                    }
-                    s_capture_buffer_valid = true;
-                    if (s_capture_stop_pending && s_capture_raw_count > 0) {
-                        ESP_LOGI(TAG, "marking remote raw capture ready total_count=%lu", (unsigned long)s_capture_raw_count);
-                        subghz_capture_mark_ready();
-                    }
-                } else {
-                    bool decoded_ok = false;
-                    subghz_decoded_signal_t decoded;
-                    memset(&decoded, 0, sizeof(decoded));
-                    if (new_count >= 16) {
-                        if (subghz_decode_signal(s_remote_raw_work, new_count, &decoded) && decoded.decoded) {
-                            decoded_ok = true;
-                            memcpy(s_capture_raw, s_remote_raw_work, new_count * sizeof(int32_t));
-                            s_capture_raw_count = new_count;
-                        }
-                    }
-                    if (!decoded_ok) {
-                        if (s_capture_raw_count + new_count <= SUBGHZ_RAW_MAX_DURATIONS) {
-                            memcpy(s_capture_raw + s_capture_raw_count, s_remote_raw_work, new_count * sizeof(int32_t));
-                            s_capture_raw_count += new_count;
-                        } else {
-                            s_capture_raw_count = new_count;
-                            memcpy(s_capture_raw, s_remote_raw_work, s_capture_raw_count * sizeof(int32_t));
-                        }
-                        if (s_capture_raw_count >= 16) {
-                            if (subghz_decode_signal(s_capture_raw, s_capture_raw_count, &decoded) && decoded.decoded) {
-                                decoded_ok = true;
-                            }
-                        }
-                    }
-                    if (decoded_ok) {
-                        subghz_capture_mark_ready_with_decoded(&decoded);
-                    }
-                }
-            } else {
-                s_capture_raw_count = new_count;
-                memcpy(s_capture_raw, s_remote_raw_work, s_capture_raw_count * sizeof(int32_t));
-            }
-        }
-        return;
-    }
-
-    if (packet_type == 8 || packet_type == 9) {
-        if (length < 12) return;
-        uint8_t name_len = data[2];
-        if (length < (size_t)(3 + name_len + 8 + 1)) return;
-        if (name_len >= SUBGHZ_DECODED_PROTO_MAX) name_len = SUBGHZ_DECODED_PROTO_MAX - 1;
-
-        if (s_capture_popup && lv_obj_is_valid(s_capture_popup) && s_capture_waiting_signal &&
-            s_capture_mode != SUBGHZ_CAPTURE_MODE_RAW) {
-            subghz_decoded_signal_t decoded;
-            memset(&decoded, 0, sizeof(decoded));
-            memcpy(decoded.protocol, data + 3, name_len);
-            decoded.protocol[name_len] = '\0';
-            size_t code_pos = 3 + name_len;
-            uint64_t code = 0;
-            for (int i = 0; i < 8; i++) code |= ((uint64_t)data[code_pos + i]) << (i * 8);
-            decoded.code = code;
-            decoded.bits = subghz_normalize_decoded_bits(decoded.protocol, (int)data[code_pos + 8]);
-            decoded.decoded = true;
-            decoded.te = (int)subghz_protocol_te(decoded.protocol);
-
-            if (packet_type == 9 && length >= (size_t)(3 + name_len + 8 + 1 + 4)) {
-                size_t freq_pos = code_pos + 9;
-                decoded.frequency_hz = (int)((uint32_t)data[freq_pos] |
-                                             ((uint32_t)data[freq_pos + 1] << 8) |
-                                             ((uint32_t)data[freq_pos + 2] << 16) |
-                                             ((uint32_t)data[freq_pos + 3] << 24));
-            } else {
-                decoded.frequency_hz = SUBGHZ_BASE_FREQ_HZ;
-            }
-
-            if (decoded.bits > 32) {
-                snprintf(decoded.info, sizeof(decoded.info), "%s %dbit\nCode:0x%016llX",
-                         decoded.protocol, decoded.bits, (unsigned long long)decoded.code);
-            } else {
-                int pos = 0;
-                pos += snprintf(decoded.info + pos, sizeof(decoded.info) - pos,
-                                "%s %dbit\nCode:0x", decoded.protocol, decoded.bits);
-                uint32_t c = (uint32_t)decoded.code;
-                for (int i = decoded.bits - 4; i >= 0; i -= 4) {
-                    if (pos < (int)sizeof(decoded.info) - 2)
-                        pos += snprintf(decoded.info + pos, sizeof(decoded.info) - pos,
-                                        "%X", (unsigned)((c >> i) & 0xF));
-                }
-            }
-
-            s_capture_buffer_valid = true;
-            subghz_capture_mark_ready_with_decoded(&decoded);
-        }
-        return;
-    }
-
-    if (packet_type == SUBGHZ_STREAM_WATERFALL_LINE) {
-        if (length < 6) {
-            return;
-        }
-        uint8_t count = data[2];
-        if (count < 2 || count > SUBGHZ_SCANNER_CHANNEL_COUNT || (size_t)(6 + count) > length) {
-            return;
-        }
-        memcpy(s_wf_remote_line, data + 6, count);
-        s_wf_remote_count = count;
-        s_wf_remote_freq_idx = data[3];
-        if (s_wf_remote_freq_idx >= SUBGHZ_FA_BAND_COUNT) {
-            s_wf_remote_freq_idx = 2;
-        }
-        s_wf_remote_seq = (uint16_t)data[4] | ((uint16_t)data[5] << 8);
-        subghz_wf_store_band_line(s_wf_remote_freq_idx, s_wf_remote_line, count);
-        if (s_wf_remote_seq == 1 || (s_wf_remote_seq % 32U) == 0U) {
-            uint8_t peak = 0;
-            for (uint8_t i = 0; i < count; i++) {
-                if (s_wf_remote_line[i] > peak) {
-                    peak = s_wf_remote_line[i];
-                }
-            }
-            ESP_LOGI(TAG, "waterfall rx seq=%u freq_idx=%u bins=%u peak=%u", (unsigned)s_wf_remote_seq, (unsigned)s_wf_remote_freq_idx, (unsigned)count, (unsigned)peak);
-        }
-        s_wf_remote_ready = true;
-        s_remote_stream_online = true;
-        s_remote_error = false;
-        return;
-    }
-
-    if (packet_type == SUBGHZ_STREAM_WATERFALL_CHUNK) {
-        if (length < 8) {
-            return;
-        }
-        uint8_t total = data[2];
-        uint8_t freq_idx = data[3];
-        uint16_t seq = (uint16_t)data[4] | ((uint16_t)data[5] << 8);
-        uint8_t offset = data[6];
-        uint8_t chunk = data[7];
-        if (total < 2 || total > SUBGHZ_SCANNER_CHANNEL_COUNT || chunk == 0 || offset >= total ||
-            (uint8_t)(offset + chunk) > total || (size_t)(8 + chunk) > length) {
-            return;
-        }
-        if (freq_idx >= SUBGHZ_FA_BAND_COUNT) {
-            freq_idx = 2;
-        }
-        if (seq != s_wf_remote_build_seq || total != s_wf_remote_build_count || offset == 0) {
-            memset(s_wf_remote_build_line, 0, sizeof(s_wf_remote_build_line));
-            s_wf_remote_build_seq = seq;
-            s_wf_remote_build_count = total;
-            s_wf_remote_build_received = 0;
-            s_wf_remote_build_mask = 0;
-        }
-        uint8_t chunk_bit = (offset == 0) ? 1U : 2U;
-        if (s_wf_remote_build_mask & chunk_bit) {
-            return;
-        }
-        memcpy(s_wf_remote_build_line + offset, data + 8, chunk);
-        s_wf_remote_build_received = (uint8_t)(s_wf_remote_build_received + chunk);
-        s_wf_remote_build_mask |= chunk_bit;
-        if (s_wf_remote_build_received >= total && s_wf_remote_build_mask != 0) {
-            memcpy(s_wf_remote_line, s_wf_remote_build_line, total);
-            s_wf_remote_count = total;
-            s_wf_remote_freq_idx = freq_idx;
-            s_wf_remote_seq = seq;
-            s_wf_remote_ready = true;
-            subghz_wf_store_band_line(s_wf_remote_freq_idx, s_wf_remote_line, total);
-            if (s_wf_remote_seq == 1 || (s_wf_remote_seq % 32U) == 0U) {
-                uint8_t peak = 0;
-                for (uint8_t i = 0; i < total; i++) {
-                    if (s_wf_remote_line[i] > peak) {
-                        peak = s_wf_remote_line[i];
-                    }
-                }
-                ESP_LOGI(TAG, "waterfall rx seq=%u freq_idx=%u bins=%u peak=%u", (unsigned)s_wf_remote_seq, (unsigned)s_wf_remote_freq_idx, (unsigned)total, (unsigned)peak);
-            }
-        }
-        s_remote_stream_online = true;
-        s_remote_error = false;
-        return;
-    }
-
-    if (packet_type != 0) {
-        return;
-    }
-
-    if (length < 7) {
-        return;
-    }
-
-    uint8_t cursor = data[2];
-    uint8_t start_ch = data[3];
-    uint8_t count = data[4];
-    s_remote_freq_idx = data[5];
-    if (s_remote_freq_idx > 4) s_remote_freq_idx = 2;
-
-    if (count == 0 || count > 32 || (size_t)(7 + count) > length) {
-        return;
-    }
-
-    for (uint8_t i = 0; i < count; i++) {
-        uint8_t ch = (uint8_t)((start_ch + i) % SUBGHZ_SCANNER_CHANNEL_COUNT);
-        s_levels[ch] = data[7 + i];
-        if (s_levels[ch] > s_peaks[ch]) {
-            s_peaks[ch] = s_levels[ch];
-        }
-    }
-
-    if (s_fa_popup && lv_obj_is_valid(s_fa_popup)) {
-        uint8_t max_lvl = 0;
-        for (uint8_t i = 0; i < count; i++) {
-            if (data[7 + i] > max_lvl) max_lvl = data[7 + i];
-        }
-        uint8_t bi = s_remote_freq_idx;
-        if (bi < SUBGHZ_FA_BAND_COUNT) {
-            s_fa_band_levels[bi] = max_lvl;
-            s_fa_active_band = bi;
-            if (max_lvl > s_fa_band_peaks[bi])
-                s_fa_band_peaks[bi] = max_lvl;
-        }
-    }
-
-    s_cursor = (uint8_t)(cursor % SUBGHZ_SCANNER_CHANNEL_COUNT);
-    if (s_wf_remote_have_cursor && s_cursor < s_wf_remote_last_cursor) {
-        memcpy(s_wf_remote_line, s_levels, sizeof(s_wf_remote_line));
-        s_wf_remote_count = SUBGHZ_SCANNER_CHANNEL_COUNT;
-        s_wf_remote_freq_idx = s_remote_freq_idx;
-        s_wf_remote_seq++;
-        s_wf_remote_ready = true;
-    }
-    s_wf_remote_last_cursor = s_cursor;
-    s_wf_remote_have_cursor = true;
-    s_remote_stream_online = true;
-    s_remote_error = false;
-}
-
 void subghz_view_register_stream_handler(void) {
-    (void)esp_comm_manager_register_stream_handler(COMM_STREAM_CHANNEL_SUBGHZ, subghz_stream_rx_cb, NULL);
+    // GhostLink peer streaming removed; kept as a no-op for its boot call site.
 }
 
 void subghz_view_update_remote_state(const char *state) {

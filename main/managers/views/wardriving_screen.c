@@ -7,7 +7,6 @@
 #include "vendor/GPS/gps_logger.h"
 #include "vendor/GPS/minmea_soft.h"
 #include "core/callbacks.h"
-#include "core/esp_comm_manager.h"
 #include "core/glog.h"
 #include "gui/design_tokens.h"
 #ifndef CONFIG_IDF_TARGET_ESP32S2
@@ -471,7 +470,7 @@ static void update_display_cb(lv_timer_t *timer) {
     }
 
     if (lbl_link_mode) {
-        bool connected = esp_comm_manager_is_connected();
+        bool connected = false;
         bool peer_gps_mode = !wardriving_scan_mode && gps_manager_is_peer_gps_preferred();
         bool ghostlink_enabled = connected && !wardriving_is_helper_mode() &&
                                  ((wardriving_scan_mode && wardriving_has_peer_helper()) ||
@@ -765,7 +764,7 @@ void wardriving_view_create(void) {
     const lv_font_t *body_font = get_body_font();
     const lv_font_t *small_font = get_small_font();
     
-    bool peer_connected = esp_comm_manager_is_connected();
+    bool peer_connected = false;
     bool peer_only_mode = !wardriving_scan_mode && peer_connected && should_prefer_peer_only_in_view();
     bool observing_existing_session = (wardriving_scan_mode || wardriving_ble_mode) && csv_file_is_open();
 
@@ -817,30 +816,8 @@ void wardriving_view_create(void) {
             }
         }
 
-        bool peer_helper_ok = false;
-        if (csv_ok && esp_comm_manager_is_connected()) {
-            char helper_command[256];
-            char helper_plan_csv[192] = {0};
-            uint16_t hop_ms = settings_get_wd_hop_helper_ms(&G_Settings);
-            bool weighted = settings_get_wd_weighted_5g(&G_Settings);
-            if (wardriving_get_helper_channel_plan_csv(helper_plan_csv, sizeof(helper_plan_csv))) {
-                snprintf(helper_command, sizeof(helper_command),
-                         "startwd --helper --channels %s --hop %u%s",
-                         helper_plan_csv, (unsigned)hop_ms, weighted ? " --weighted" : "");
-            } else {
-                snprintf(helper_command, sizeof(helper_command), "startwd --helper --hop %u%s",
-                         (unsigned)hop_ms, weighted ? " --weighted" : "");
-            }
-            wardriving_expect_peer_assist(true);
-            peer_helper_ok = esp_comm_manager_send_command_line(helper_command);
-            if (!peer_helper_ok) wardriving_expect_peer_assist(false);
-            glog(peer_helper_ok
-                     ? "Wardrive helper start sent; waiting for ready status.\n"
-                     : "Wardrive helper not started on peer; continuing local only.\n");
-        } else {
-            glog("Wardrive helper unavailable: no GhostLink peer connected.\n");
-        }
-        if (!peer_helper_ok) wardriving_set_peer_assist(false);
+        glog("Wardrive helper unavailable: no GhostLink peer connected.\n");
+        wardriving_set_peer_assist(false);
     }
     wardriving_owns_csv_session = csv_ok && !observing_existing_session &&
                                     (wardriving_scan_mode || wardriving_ble_mode);
@@ -1042,12 +1019,6 @@ void wardriving_view_destroy(void) {
         wardriving_ble_mode = false;
     } else if (owned_csv_session && wardriving_scan_mode) {
         stop_wardriving();
-        if (esp_comm_manager_is_connected()) {
-            bool peer_stop_ok = esp_comm_manager_send_command("startwd", "-s --helper");
-            glog(peer_stop_ok
-                     ? "Wardrive helper stop sent to peer.\n"
-                     : "Wardrive helper stop could not be sent to peer.\n");
-        }
         wardriving_set_peer_assist(false);
         wifi_manager_stop_monitor_mode();
         if (csv_buffer_has_pending_data()) {

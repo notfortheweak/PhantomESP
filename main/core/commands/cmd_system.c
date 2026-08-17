@@ -4,7 +4,6 @@
 #include "core/callbacks.h"
 #include "core/chip_info.h"
 #include "core/commands.h"
-#include "core/esp_comm_manager.h"
 #include "core/glog.h"
 #include "core/screen_mirror.h"
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
@@ -86,13 +85,7 @@ void handle_startwd(int argc, char **argv) {
             glog("Wardriving helper stop ignored: helper is not active.\n");
             return;
         }
-        if (!helper_mode && !esp_comm_manager_is_remote_command()) {
-            if (esp_comm_manager_is_connected()) {
-                bool peer_stop_ok = esp_comm_manager_send_command("startwd", "-s --helper");
-                glog(peer_stop_ok
-                         ? "Wardrive helper stop sent to peer.\n"
-                         : "Wardrive helper stop could not be sent to peer.\n");
-            }
+        if (!helper_mode) {
             wardriving_set_peer_assist(false);
         }
 
@@ -161,12 +154,8 @@ void handle_startwd(int argc, char **argv) {
             return;
         }
 
+        // GhostLink peer removed: this device is always local-GPS-only now.
         bool prefer_peer_only = false;
-#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
-        prefer_peer_only = (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething") == 0) &&
-                           !esp_comm_manager_is_remote_command() &&
-                           esp_comm_manager_is_connected();
-#endif
 
         gps_manager_set_peer_gps_preferred(false);
         gps_manager_init(&g_gpsManager);
@@ -190,31 +179,8 @@ void handle_startwd(int argc, char **argv) {
         }
 
         bool peer_helper_ok = false;
-        if (!esp_comm_manager_is_remote_command()) {
-            if (esp_comm_manager_is_connected()) {
-                char helper_command[256];
-                char helper_plan_csv[192] = {0};
-                uint16_t hop_ms = settings_get_wd_hop_helper_ms(&G_Settings);
-                bool weighted = settings_get_wd_weighted_5g(&G_Settings);
-                if (wardriving_get_helper_channel_plan_csv(helper_plan_csv, sizeof(helper_plan_csv))) {
-                    snprintf(helper_command, sizeof(helper_command),
-                             "startwd --helper --channels %s --hop %u%s",
-                             helper_plan_csv, (unsigned)hop_ms, weighted ? " --weighted" : "");
-                } else {
-                    snprintf(helper_command, sizeof(helper_command), "startwd --helper --hop %u%s",
-                             (unsigned)hop_ms, weighted ? " --weighted" : "");
-                }
-                wardriving_expect_peer_assist(true);
-                peer_helper_ok = esp_comm_manager_send_command_line(helper_command);
-                if (!peer_helper_ok) wardriving_expect_peer_assist(false);
-                glog(peer_helper_ok
-                          ? "Wardrive helper start sent; waiting for ready status.\n"
-                          : "Wardrive helper not started on peer; continuing local only.\n");
-            } else {
-                glog("Wardrive helper unavailable: no GhostLink peer connected.\n");
-            }
-        }
-        if (!peer_helper_ok) wardriving_set_peer_assist(false);
+        glog("Wardrive helper unavailable: no GhostLink peer connected.\n");
+        wardriving_set_peer_assist(false);
 
         if (prefer_peer_only && !peer_helper_ok) {
             gps_manager_set_peer_gps_preferred(false);

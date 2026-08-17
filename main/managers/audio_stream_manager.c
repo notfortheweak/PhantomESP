@@ -1,7 +1,6 @@
 #include "managers/audio_stream_manager.h"
 
 #ifdef CONFIG_HAS_AUDIO_PLAYER
-#include "core/esp_comm_manager.h"
 #include "managers/sd_card_manager.h"
 #include "managers/microphone/mic_visualizer.h"
 #ifdef CONFIG_HAS_TLV320DAC_I2C
@@ -571,7 +570,6 @@ static esp_err_t audio_stream_start_after_precheck(int index, uint16_t bitrate, 
 
     audio_pause_competing_streams();
     audio_apply_one_shot_headphone_route();
-    (void)esp_comm_manager_send_command("audio", "start");
 
     xSemaphoreTake(s_ctx.mutex, portMAX_DELAY);
     s_ctx.state = AUDIO_STREAM_STATE_PLAYING;
@@ -590,7 +588,6 @@ esp_err_t audio_stream_manager_pause(void)
     xSemaphoreTake(s_ctx.mutex, portMAX_DELAY);
     if (s_ctx.state == AUDIO_STREAM_STATE_PLAYING) {
         s_ctx.state = AUDIO_STREAM_STATE_PAUSED;
-        (void)esp_comm_manager_send_command("audio", "pause");
         ESP_LOGI(TAG, "Paused");
     }
     xSemaphoreGive(s_ctx.mutex);
@@ -602,7 +599,6 @@ esp_err_t audio_stream_manager_resume(void)
     if (!s_ctx.initialized) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(s_ctx.mutex, portMAX_DELAY);
     if (s_ctx.state == AUDIO_STREAM_STATE_PAUSED) {
-        (void)esp_comm_manager_send_command("audio", "start");
         s_ctx.state = AUDIO_STREAM_STATE_PLAYING;
         ESP_LOGI(TAG, "Resumed");
     }
@@ -618,7 +614,6 @@ esp_err_t audio_stream_manager_stop(void)
     s_ctx.state = AUDIO_STREAM_STATE_STOPPED;
     s_ctx.stream_id++;
 
-    (void)esp_comm_manager_send_command("audio", "stop");
     audio_resume_competing_streams();
 
     xSemaphoreGive(s_ctx.mutex);
@@ -664,7 +659,7 @@ bool audio_stream_manager_sd_available(void)
 esp_err_t audio_stream_manager_play_embedded(const uint8_t *data, size_t len)
 {
     if (!data || len == 0) return ESP_ERR_INVALID_ARG;
-    if (!esp_comm_manager_is_connected()) return ESP_ERR_INVALID_STATE;
+    if (!false) return ESP_ERR_INVALID_STATE;
 
     if (!s_ctx.initialized) {
         esp_err_t init_err = audio_stream_manager_init();
@@ -784,7 +779,6 @@ static esp_err_t audio_stream_start_embedded_after_precheck(const uint8_t *data,
     ESP_LOGI(TAG, "Playing embedded audio (%u bytes)", (unsigned)len);
     audio_pause_competing_streams();
     audio_apply_one_shot_headphone_route();
-    (void)esp_comm_manager_send_command("audio", "start");
 
     xSemaphoreTake(s_ctx.mutex, portMAX_DELAY);
     s_ctx.state = AUDIO_STREAM_STATE_PLAYING;
@@ -1009,7 +1003,6 @@ static void audio_stream_task(void *arg)
 
     ESP_LOGI(TAG, "Stream task started");
     bool waiting_logged = false;
-    bool first_chunk_logged = false;
     bool pacing_started = false;
     TickType_t pacing_start_tick = 0;
 
@@ -1027,12 +1020,11 @@ static void audio_stream_task(void *arg)
             continue;
         }
 
-        if (!esp_comm_manager_is_connected()) {
+        if (!false) {
             if (!waiting_logged) {
                 ESP_LOGW(TAG, "Waiting for GhostLink connection before streaming audio");
                 waiting_logged = true;
                 /* Flush receiver to prevent playing stale data after reconnect */
-                (void)esp_comm_manager_send_command("audio", "flush");
             }
             xSemaphoreGive(s_ctx.mutex);
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -1133,7 +1125,6 @@ static void audio_stream_task(void *arg)
             }
             xSemaphoreGive(s_ctx.mutex);
 
-            (void)esp_comm_manager_send_command("audio", "stop");
             audio_resume_competing_streams();
 
             free(stream_buf);
@@ -1172,19 +1163,10 @@ static void audio_stream_task(void *arg)
                 if (send_len > STREAM_CHUNK_SIZE) {
                     send_len = STREAM_CHUNK_SIZE;
                 }
-                bool sent = esp_comm_manager_send_stream_wait(COMM_STREAM_CHANNEL_AUDIO,
-                                                              stream_buf + sent_total,
-                                                              send_len,
-                                                              STREAM_SEND_WAIT_MS);
-                if (sent && !first_chunk_logged) {
-                    ESP_LOGI(TAG, "Audio stream started (%dKB bursts, %d byte packets)",
-                             (int)(STREAM_READ_BURST_SIZE / 1024), (int)STREAM_CHUNK_SIZE);
-                    first_chunk_logged = true;
-                }
+                // GhostLink peer removed -- there is no receiver to stream audio to.
+                bool sent = false;
                 if (!sent) {
                     ESP_LOGW(TAG, "GhostLink stream send failed");
-                    /* Tell the receiver to flush its decoder to avoid playing garbage */
-                    (void)esp_comm_manager_send_command("audio", "flush");
                     xSemaphoreTake(s_ctx.mutex, portMAX_DELAY);
                     s_ctx.state = AUDIO_STREAM_STATE_STOPPED;
                     xSemaphoreGive(s_ctx.mutex);

@@ -47,7 +47,6 @@ static volatile uint32_t s_wdstream_ap_records = 0;
 static volatile uint32_t s_wdstream_ble_records = 0;
 static volatile uint32_t s_wdstream_scans = 0;
 static volatile uint8_t s_wdstream_current_channel = 0;
-static volatile bool s_wdstream_forward_comm = false;
 static int64_t s_wdstream_started_ms = 0;
 static wdstream_config_t s_wdstream_cfg = {0};
 static char s_wdstream_stop_reason[16] = "stop";
@@ -78,10 +77,6 @@ static void wdstream_emit(const char *fmt, ...) {
     }
 
     printf("%s", buf);
-    if (esp_comm_manager_is_connected() &&
-        (s_wdstream_forward_comm || esp_comm_manager_should_forward_output())) {
-        (void)esp_comm_manager_send_response((const uint8_t *)buf, (size_t)written);
-    }
     terminal_view_add_text(buf);
 }
 
@@ -465,7 +460,6 @@ static void wdstream_task(void *pvParameter) {
 
     wdstream_emit("WD:END reason=%s\n", s_wdstream_stop_reason);
     s_wdstream_active = false;
-    s_wdstream_forward_comm = false;
     s_wdstream_task = NULL;
     vTaskDelete(NULL);
 }
@@ -590,12 +584,10 @@ void handle_wdstream_cmd(int argc, char **argv) {
 
     s_wdstream_cfg = cfg;
     s_wdstream_stop_requested = false;
-    s_wdstream_forward_comm = esp_comm_manager_is_remote_command() || esp_comm_manager_should_forward_output();
     snprintf(s_wdstream_stop_reason, sizeof(s_wdstream_stop_reason), "stop");
     BaseType_t ok = xTaskCreate(wdstream_task, "wdstream", 5120, NULL, 5, &s_wdstream_task);
     if (ok != pdPASS) {
         s_wdstream_task = NULL;
-        s_wdstream_forward_comm = false;
         wdstream_emit("WD:ERROR error=task_create_failed\n");
     }
 }

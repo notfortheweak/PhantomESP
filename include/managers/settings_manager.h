@@ -452,7 +452,6 @@ bool settings_get_web_auth_enabled(const FSettings *settings);
 void settings_set_webui_restrict_to_ap(FSettings *settings, bool enabled);
 bool settings_get_webui_restrict_to_ap(const FSettings *settings);
 
-void settings_set_esp_comm_pins(FSettings *settings, int32_t tx_pin, int32_t rx_pin);
 void settings_get_esp_comm_pins(const FSettings *settings, int32_t *tx_pin, int32_t *rx_pin);
 
 // NVS Storage Monitoring Functions

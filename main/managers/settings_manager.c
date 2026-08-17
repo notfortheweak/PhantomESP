@@ -1673,11 +1673,6 @@ bool settings_get_power_save_enabled(const FSettings *settings) {
   return settings->power_save_enabled;
 }
 
-void settings_set_esp_comm_pins(FSettings *settings, int32_t tx_pin, int32_t rx_pin) {
-  settings->esp_comm_tx_pin = tx_pin;
-  settings->esp_comm_rx_pin = rx_pin;
-}
-
 void settings_get_esp_comm_pins(const FSettings *settings, int32_t *tx_pin, int32_t *rx_pin) {
   if (tx_pin) *tx_pin = settings->esp_comm_tx_pin;
   if (rx_pin) *rx_pin = settings->esp_comm_rx_pin;

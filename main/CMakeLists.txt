@@ -1,6 +1,5 @@
-file(GLOB_RECURSE app_sources 
+file(GLOB_RECURSE app_sources
     "${CMAKE_SOURCE_DIR}/main/*.c"
-    "${CMAKE_SOURCE_DIR}/main/core/esp_comm_manager.c"
     "${CMAKE_SOURCE_DIR}/main/core/universal_ir.c"
 )
 # Exclude all Flipper NFC parser sources from the glob so we can whitelist only

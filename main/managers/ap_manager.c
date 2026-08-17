@@ -4,7 +4,6 @@
 #define GHOST_SITE_PAYLOAD_SIZE ghost_site_html_gz_size
 #define GHOST_SITE_IS_GZ 1
 #include "managers/settings_manager.h"
-#include "core/esp_comm_manager.h"
 #include "core/ouis.h"
 #include "core/utils.h"
 #include "sdkconfig.h"
@@ -75,9 +74,6 @@ static esp_err_t api_settings_handler(httpd_req_t *req);
 static esp_err_t api_command_handler(httpd_req_t *req);
 static esp_err_t api_settings_get_handler(httpd_req_t *req);
 static esp_err_t api_logs_handler(httpd_req_t *req);
-static esp_err_t api_esp_comm_status_handler(httpd_req_t *req);
-static esp_err_t api_esp_comm_control_handler(httpd_req_t *req);
-static esp_err_t api_esp_comm_send_handler(httpd_req_t *req);
 
 static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                           void *event_data);
@@ -1605,12 +1601,6 @@ static esp_err_t api_settings_get_handler(httpd_req_t *req) {
     cJSON_AddBoolToObject(root, "web_auth_enabled", settings_get_web_auth_enabled(settings));
     cJSON_AddBoolToObject(root, "ap_enabled", settings_get_ap_enabled(settings));
 
-    // Add ESP communication pin settings
-    int32_t tx_pin, rx_pin;
-    settings_get_esp_comm_pins(settings, &tx_pin, &rx_pin);
-    cJSON_AddNumberToObject(root, "esp_comm_tx_pin", tx_pin);
-    cJSON_AddNumberToObject(root, "esp_comm_rx_pin", rx_pin);
-
     esp_netif_ip_info_t ip_info;
     esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
@@ -1637,157 +1627,6 @@ static esp_err_t api_settings_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// Handler for ESP communication status
-static esp_err_t api_esp_comm_status_handler(httpd_req_t *req) {
-    WEBUI_GUARD_OR_RETURN(req);
-    cJSON *root = cJSON_CreateObject();
-    if (!root) {
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_sendstr(req, "{\"error\": \"Failed to create JSON object\"}");
-        return ESP_FAIL;
-    }
-
-    comm_state_t state = esp_comm_manager_get_state();
-    const char *state_str = "unknown";
-    switch (state) {
-        case COMM_STATE_IDLE: state_str = "idle"; break;
-        case COMM_STATE_SCANNING: state_str = "scanning"; break;
-        case COMM_STATE_HANDSHAKE: state_str = "handshake"; break;
-        case COMM_STATE_CONNECTED: state_str = "connected"; break;
-        case COMM_STATE_ERROR: state_str = "error"; break;
-        default: state_str = "unknown"; break;
-    }
-
-    cJSON_AddStringToObject(root, "state", state_str);
-    cJSON_AddBoolToObject(root, "connected", esp_comm_manager_is_connected());
-    cJSON_AddBoolToObject(root, "is_remote_command", esp_comm_manager_is_remote_command());
-
-    char *response_string = cJSON_Print(root);
-    if (!response_string) {
-        cJSON_Delete(root);
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_sendstr(req, "{\"error\": \"Failed to serialize JSON\"}");
-        return ESP_FAIL;
-    }
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, response_string);
-
-    cJSON_Delete(root);
-    free(response_string);
-    return ESP_OK;
-}
-
-// Handler for ESP communication control (start discovery, connect, disconnect)
-static esp_err_t api_esp_comm_control_handler(httpd_req_t *req) {
-    WEBUI_GUARD_OR_RETURN(req);
-    char content[512];
-    int ret = httpd_req_recv(req, content, MIN_(req->content_len, sizeof(content) - 1));
-    if (ret <= 0) {
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"error\": \"Invalid request payload\"}");
-        return ESP_FAIL;
-    }
-    
-    content[ret] = '\0';
-    
-    cJSON *json = cJSON_Parse(content);
-    if (!json) {
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"error\": \"Invalid JSON payload\"}");
-        return ESP_FAIL;
-    }
-
-    cJSON *action = cJSON_GetObjectItem(json, "action");
-    if (!action || !cJSON_IsString(action)) {
-        cJSON_Delete(json);
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"error\": \"Missing or invalid action\"}");
-        return ESP_FAIL;
-    }
-
-    const char *action_str = action->valuestring;
-    bool success = false;
-    char response_msg[256] = {0};
-
-    if (strcmp(action_str, "start_discovery") == 0) {
-        success = esp_comm_manager_start_discovery();
-        snprintf(response_msg, sizeof(response_msg), "Discovery %s", success ? "started" : "failed");
-    } else if (strcmp(action_str, "connect") == 0) {
-        cJSON *peer_name = cJSON_GetObjectItem(json, "peer_name");
-        if (peer_name && cJSON_IsString(peer_name)) {
-            success = esp_comm_manager_connect_to_peer(peer_name->valuestring);
-            snprintf(response_msg, sizeof(response_msg), "Connection to %s %s", 
-                     peer_name->valuestring, success ? "initiated" : "failed");
-        } else {
-            snprintf(response_msg, sizeof(response_msg), "Missing peer name");
-        }
-    } else if (strcmp(action_str, "disconnect") == 0) {
-        esp_comm_manager_disconnect();
-        success = true;
-        snprintf(response_msg, sizeof(response_msg), "Disconnected");
-    } else {
-        snprintf(response_msg, sizeof(response_msg), "Unknown action: %s", action_str);
-    }
-
-    cJSON *response = cJSON_CreateObject();
-    cJSON_AddBoolToObject(response, "success", success);
-    cJSON_AddStringToObject(response, "message", response_msg);
-
-    char *response_string = cJSON_Print(response);
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, response_string);
-
-    cJSON_Delete(json);
-    cJSON_Delete(response);
-    free(response_string);
-    return ESP_OK;
-}
-
-// Handler for sending ESP communication commands
-static esp_err_t api_esp_comm_send_handler(httpd_req_t *req) {
-    WEBUI_GUARD_OR_RETURN(req);
-    char content[512];
-    int ret = httpd_req_recv(req, content, MIN_(req->content_len, sizeof(content) - 1));
-    if (ret <= 0) {
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"error\": \"Invalid request payload\"}");
-        return ESP_FAIL;
-    }
-    
-    content[ret] = '\0';
-    
-    cJSON *json = cJSON_Parse(content);
-    if (!json) {
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"error\": \"Invalid JSON payload\"}");
-        return ESP_FAIL;
-    }
-
-    cJSON *command = cJSON_GetObjectItem(json, "command");
-    if (!command || !cJSON_IsString(command)) {
-        cJSON_Delete(json);
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"error\": \"Missing or invalid command\"}");
-        return ESP_FAIL;
-    }
-
-    // Send the full command string as-is (no separate data field needed)
-    bool success = esp_comm_manager_send_command(command->valuestring, NULL);
-    
-    cJSON *response = cJSON_CreateObject();
-    cJSON_AddBoolToObject(response, "success", success);
-    cJSON_AddStringToObject(response, "message", success ? "Command sent successfully" : "Failed to send command");
-
-    char *response_string = cJSON_Print(response);
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, response_string);
-
-    cJSON_Delete(json);
-    cJSON_Delete(response);
-    free(response_string);
-    return ESP_OK;
-}
 
 // Event handler for Wi-Fi events
 static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
@@ -1890,9 +1729,6 @@ static esp_err_t load_server_config(void) {
     ADD_URI_HANDLER("/api/command", HTTP_POST, api_command_handler);
     ADD_URI_HANDLER("/api/logs", HTTP_GET, api_logs_handler);
     ADD_URI_HANDLER("/api/clear_logs", HTTP_POST, api_clear_logs_handler);
-    ADD_URI_HANDLER("/api/esp_comm/status", HTTP_GET, api_esp_comm_status_handler);
-    ADD_URI_HANDLER("/api/esp_comm/control", HTTP_POST, api_esp_comm_control_handler);
-    ADD_URI_HANDLER("/api/esp_comm/send", HTTP_POST, api_esp_comm_send_handler);
 #ifdef CONFIG_HAS_CAMERA
     ADD_URI_HANDLER("/camera", HTTP_GET, camera_stream_page_handler);
     ADD_URI_HANDLER("/camera/stream", HTTP_GET, camera_stream_http_handler);

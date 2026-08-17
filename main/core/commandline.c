@@ -13,7 +13,6 @@
 #include "vendor/drivers/pcf8563.h"
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "managers/ble_manager.h"
-#include "managers/ble_bridge_manager.h"
 #include "scans/ble/advertiser_scan.h"
 #include "scans/ble/flipper_scan.h"
 #include "host/ble_gap.h"
@@ -26,7 +25,6 @@
 #include "scans/wifi/wifi_channels.h"
 #include "scans/wifi/wpa3_compliance.h"
 #include "managers/sd_card_manager.h"
-#include "core/esp_comm_manager.h"
 #include "managers/status_display_manager.h"
 #ifdef CONFIG_HAS_MIC
 #include "managers/microphone/mic_driver.h"
@@ -40,9 +38,6 @@
 #endif
 #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
 #include "managers/zigbee_manager.h"
-#endif
-#ifdef CONFIG_HAS_TLV320DAC_I2S
-#include "managers/audio_receiver_manager.h"
 #endif
 #ifdef CONFIG_HAS_AUDIO_PLAYER
 #include "managers/audio_stream_manager.h"
@@ -255,7 +250,6 @@ void register_commands() {
     register_command("stopscan", cmd_wifi_scan_stop);
     register_command("list", handle_list);
     register_command("select", handle_select_cmd);
-    register_command("capture", handle_capture_scan);
     register_command("disconnect", handle_wifi_disconnect);
     register_command("wifistatus", handle_wifi_status);
     register_command("autoreconnect", handle_wifi_autoreconnect_cmd);
@@ -273,25 +267,9 @@ void register_commands() {
     register_command("congestion", handle_congestion_cmd);
     register_command("listenprobes", handle_listen_probes_cmd);
     register_command("settings", handle_settings_cmd);
-    register_command("commdiscovery", handle_comm_discovery);
-    register_command("commconnect", handle_comm_connect);
-    register_command("commsend", handle_comm_send);
-    register_command("commstatus", handle_comm_status);
-    register_command("commdisconnect", handle_comm_disconnect);
-    register_command("commsetpins", handle_comm_setpins);
-#if GHOSTESP_OTA_SUPPORTED
-    // Only registered on 8MB/16MB boards -- these handlers live in
-    // peer_ota_manager.c, so registering them unconditionally would pull
-    // that file's static buffers into every board's BSS for nothing.
-    register_command("otarecv", handle_otarecv_cmd);
-    register_command("otastatus", handle_otastatus_cmd);
-    register_command("otaabort", handle_otaabort_cmd);
-    register_command("otainfo", handle_otainfo_cmd);
-#endif
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     register_command("blescan", handle_ble_scan_cmd);
-    register_command("blebridge", ble_bridge_handle_command);
     register_command("blewardriving", handle_ble_wardriving);
     register_command("listairtags", handle_list_airtags_cmd);
     register_command("selectairtag", handle_select_airtag);
@@ -372,8 +350,6 @@ void register_commands() {
     register_command("loadconfig", handle_loadconfig_cmd);
     register_command("apps", handle_apps_cmd);
     register_command("subghz", handle_subghz_cmd);
-
-    cmd_comm_register_callback();
 
     glog("Registered Commands\n");
 }

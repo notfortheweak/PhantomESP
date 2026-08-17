@@ -8,7 +8,6 @@
 #include "managers/sd_card_manager.h"
 #include "managers/settings_manager.h"
 #include "core/glog.h"
-#include "core/esp_comm_manager.h"
 #include "core/serial_manager.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -225,25 +224,17 @@ static const hid_transport_t usb_transport = {
 static esp_err_t badusb_install_driver(void);
 static void badusb_uninstall_driver(void);
 static esp_err_t badusb_wait_for_mount(void);
-static void keyboard_stream_rx_cb(uint8_t channel, const uint8_t *data, size_t length, void *user_data);
 static volatile bool s_keyboard_mode = false;
 
 static esp_err_t badusb_wait_for_vbus(const char *status_after_connect) {
+    (void)status_after_connect;
     if (badusb_has_vsense() && !badusb_vsense_connected()) {
         ESP_LOGI(TAG, "Waiting for VBUS...");
-        if (esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("badusb", "status waiting");
-        }
         while (!badusb_vsense_connected() && !s_stop_requested) {
             vTaskDelay(pdMS_TO_TICKS(50));
         }
         if (s_stop_requested) return ESP_ERR_INVALID_STATE;
         vTaskDelay(pdMS_TO_TICKS(500));
-    }
-    if (status_after_connect && esp_comm_manager_is_connected()) {
-        char status[32];
-        snprintf(status, sizeof(status), "status %s", status_after_connect);
-        esp_comm_manager_send_command("badusb", status);
     }
     return ESP_OK;
 }
@@ -290,9 +281,6 @@ static void mouse_jiggler_task(void *arg) {
     int8_t dx = 8;
 
     glog("BadUSB: Mouse jiggler started\n");
-    if (esp_comm_manager_is_connected()) {
-        esp_comm_manager_send_command("badusb", "status jiggling");
-    }
 
     while (!s_jiggler_stop) {
         badusb_hid_mouse_send(dx, 0, 0);
@@ -301,9 +289,6 @@ static void mouse_jiggler_task(void *arg) {
     }
 
     glog("BadUSB: Mouse jiggler stopped\n");
-    if (esp_comm_manager_is_connected()) {
-        esp_comm_manager_send_command("badusb", "status done");
-    }
     s_jiggler_task = NULL;
     vTaskDelete(NULL);
 }
@@ -334,18 +319,11 @@ static void badusb_mode_start_task(void *arg) {
         }
     } else if (ret == ESP_OK && mode == BADUSB_START_KEYBOARD) {
         s_keyboard_mode = true;
-        esp_comm_manager_register_stream_handler(COMM_STREAM_CHANNEL_KEYBOARD, keyboard_stream_rx_cb, NULL);
         glog("BadUSB: Keyboard mode started\n");
-        if (esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("badusb", "status keyboard");
-        }
     } else if (ret == ESP_OK && mode == BADUSB_START_TRACKPAD) {
         s_trackpad_buttons = 0;
         s_trackpad_active = true;
         glog("BadUSB: Trackpad mode started\n");
-        if (esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("badusb", "status trackpad");
-        }
     }
 
     if (ret != ESP_OK) {
@@ -355,9 +333,6 @@ static void badusb_mode_start_task(void *arg) {
         s_keyboard_mode = false;
         s_trackpad_active = false;
         s_trackpad_buttons = 0;
-        if (esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("badusb", "status done");
-        }
     }
 
     s_mode_start_task = NULL;
@@ -424,9 +399,6 @@ esp_err_t badusb_manager_trackpad_stop(void) {
         s_active = false;
     }
     glog("BadUSB: Trackpad mode stopped\n");
-    if (esp_comm_manager_is_connected()) {
-        esp_comm_manager_send_command("badusb", "status done");
-    }
     return ESP_OK;
 }
 
@@ -464,25 +436,6 @@ void badusb_manager_trackpad_wheel(int delta) {
 
 // --- Keyboard Mode (real-time key forwarding) ---
 
-static void keyboard_stream_rx_cb(uint8_t channel, const uint8_t *data, size_t length, void *user_data) {
-    (void)channel;
-    (void)user_data;
-    if (!s_keyboard_mode || !data || length < 3) return;
-
-    // Payload: [flags] [modifier] [keycode]
-    // flags bit 0 = release event
-    bool is_release = (data[0] & 0x01) != 0;
-    uint8_t modifier = data[1];
-    uint8_t keycode = data[2];
-
-    if (is_release) {
-        tud_hid_n_keyboard_report(ITF_NUM_HID_KEYBOARD, 0, 0, NULL);
-    } else {
-        uint8_t keycodes[6] = {keycode, 0, 0, 0, 0, 0};
-        tud_hid_n_keyboard_report(ITF_NUM_HID_KEYBOARD, 0, modifier, keycodes);
-    }
-}
-
 esp_err_t badusb_manager_keyboard_mode_start(void) {
     if (s_mode_start_task) return ESP_ERR_INVALID_STATE;
     if (s_active || s_keyboard_mode) return ESP_ERR_INVALID_STATE;
@@ -506,9 +459,6 @@ esp_err_t badusb_manager_keyboard_mode_stop(void) {
     }
     s_active = false;
     glog("BadUSB: Keyboard mode stopped\n");
-    if (esp_comm_manager_is_connected()) {
-        esp_comm_manager_send_command("badusb", "status done");
-    }
     return ESP_OK;
 }
 
@@ -713,9 +663,6 @@ static void badusb_exec_task(void *arg) {
     if (badusb_has_vsense() && !badusb_vsense_connected()) {
         ESP_LOGI(TAG, "Waiting for VBUS...");
         // Notify peer (C5) that we're waiting for USB
-        if (esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("badusb", "status waiting");
-        }
         while (!badusb_vsense_connected() && !s_stop_requested) {
             vTaskDelay(pdMS_TO_TICKS(50));
         }
@@ -731,18 +678,12 @@ static void badusb_exec_task(void *arg) {
         // Let VBUS and data lines stabilise before touching the USB stack
         vTaskDelay(pdMS_TO_TICKS(500));
         // Notify peer (C5) that USB is connected
-        if (esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("badusb", "status running");
-        }
     }
 
     // Now install TinyUSB and wait for host enumeration
     esp_err_t ret = badusb_manager_start();
     if (ret != ESP_OK) {
         glog("BadUSB: Failed to start: %s\n", esp_err_to_name(ret));
-        if (esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("badusb", "status done");
-        }
         if (!params->from_file && params->buf) free(params->buf);
         free(params);
         s_exec_task_handle = NULL;
@@ -777,9 +718,6 @@ static void badusb_exec_task(void *arg) {
     }
 
     // Notify peer (C5) that execution is done
-    if (esp_comm_manager_is_connected()) {
-        esp_comm_manager_send_command("badusb", "status done");
-    }
 
     badusb_uninstall_driver();
 
@@ -844,7 +782,7 @@ static size_t s_script_size = 0;
 static size_t s_script_offset = 0;
 
 esp_err_t badusb_manager_prepare_receive(size_t size) {
-    bool remote_request = esp_comm_manager_is_remote_command();
+    bool remote_request = false;
 
     if (s_script_buf) {
         free(s_script_buf);
@@ -894,32 +832,8 @@ esp_err_t badusb_manager_execute_buffer(char *buf, size_t len) {
     return ESP_OK;
 }
 
-static void badusb_stream_rx_cb(uint8_t channel, const uint8_t *data, size_t length, void *user_data) {
-    (void)channel;
-    (void)user_data;
-
-    if (!s_script_buf || !data || length == 0) return;
-
-    size_t remaining = s_script_size - s_script_offset;
-    size_t to_copy = (length < remaining) ? length : remaining;
-
-    memcpy(s_script_buf + s_script_offset, data, to_copy);
-    s_script_offset += to_copy;
-
-    if (s_script_offset >= s_script_size) {
-        char *buf = s_script_buf;
-        size_t size = s_script_size;
-        s_script_buf = NULL;
-        s_script_size = 0;
-        s_script_offset = 0;
-        badusb_manager_execute_buffer(buf, size);
-    }
-}
-
 void badusb_manager_register_stream_handler(void) {
-    bool ok = esp_comm_manager_register_stream_handler(
-        COMM_STREAM_CHANNEL_BADUSB, badusb_stream_rx_cb, NULL);
-    ESP_LOGI(TAG, "BadUSB stream handler: %s", ok ? "OK" : "FAIL");
+    // GhostLink peer streaming removed; kept as a no-op for its boot call site.
 }
 
 #endif // CONFIG_HAS_BADUSB

@@ -5,7 +5,6 @@
 #include "core/commands.h"
 #include "core/shell.h"
 #include "core/commandline.h"
-#include "core/esp_comm_manager.h"
 #include "core/glog.h"
 #include "core/memory_debug.h"
 #include "core/system_manager.h"
@@ -115,12 +114,7 @@ void handle_stop_flipper(int argc, char **argv) {
     }
 
     stop_wardriving();
-    if (!esp_comm_manager_is_remote_command()) {
-        if (esp_comm_manager_is_connected()) {
-            esp_comm_manager_send_command("startwd", "-s --helper");
-        }
-        wardriving_set_peer_assist(false);
-    }
+    wardriving_set_peer_assist(false);
 
     wifi_manager_cancel_connect();
 

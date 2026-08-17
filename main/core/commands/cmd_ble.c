@@ -5,7 +5,6 @@
 #include "core/callbacks.h"
 #include "core/glog.h"
 #include "core/ouis.h"
-#include "core/esp_comm_manager.h"
 #include "managers/gps_manager.h"
 #include "managers/status_display_manager.h"
 #include "managers/views/terminal_screen.h"
@@ -117,15 +116,10 @@ void handle_ble_wardriving(int argc, char **argv) {
             printf("A wardriving CSV session is already active.\n");
             return;
         }
-        bool peer_connected = esp_comm_manager_is_connected();
-        gps_manager_set_peer_gps_preferred(peer_connected);
-        if (!peer_connected) {
-            gps_manager_clear_peer_fix();
-        }
-        if (!peer_connected && !g_gpsManager.isinitilized) {
+        gps_manager_set_peer_gps_preferred(false);
+        gps_manager_clear_peer_fix();
+        if (!g_gpsManager.isinitilized) {
             gps_manager_init(&g_gpsManager);
-        } else if (peer_connected && g_gpsManager.isinitilized) {
-            gps_manager_deinit(&g_gpsManager);
         }
 
         // Open CSV file for BLE wardriving
@@ -140,13 +134,8 @@ void handle_ble_wardriving(int argc, char **argv) {
         ble_register_handler(ble_wardriving_callback);
         printf("BLE wardriving started.\n");
         TERMINAL_VIEW_ADD_TEXT("BLE wardriving started.\n");
-        if (peer_connected) {
-            printf("BLE wardriving GPS source: peer stream preferred.\n");
-            TERMINAL_VIEW_ADD_TEXT("BLE wardriving GPS source: peer stream preferred.\n");
-        } else {
-            printf("BLE wardriving GPS source: local parser.\n");
-            TERMINAL_VIEW_ADD_TEXT("BLE wardriving GPS source: local parser.\n");
-        }
+        printf("BLE wardriving GPS source: local parser.\n");
+        TERMINAL_VIEW_ADD_TEXT("BLE wardriving GPS source: local parser.\n");
         status_display_show_status("BLE Drive On");
     }
 }

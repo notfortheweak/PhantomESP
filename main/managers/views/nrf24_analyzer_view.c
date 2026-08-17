@@ -12,7 +12,6 @@
 #include "gui/theme_palette_api.h"
 #include "managers/settings_manager.h"
 #include "gui/accessibility_fonts.h"
-#include "core/esp_comm_manager.h"
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -264,7 +263,7 @@ static void nrf24_update_pause_ui(void) {
         if (s_remote_mode) {
             if (s_remote_error) {
                 lv_label_set_text(s_status_label, "Peer error");
-            } else if (!esp_comm_manager_is_connected()) {
+            } else if (!false) {
                 lv_label_set_text(s_status_label, "GhostLink disconnected");
             } else if (!s_remote_stream_online) {
                 lv_label_set_text(s_status_label, "Waiting for peer stream...");
@@ -305,21 +304,7 @@ static void nrf24_toggle_pause(void) {
 #endif
 
     if (s_remote_mode) {
-        if (!esp_comm_manager_is_connected()) {
-            nrf24_update_pause_ui();
-            return;
-        }
-
-        if (s_paused) {
-            if (esp_comm_manager_send_command("nrf24", "resume")) {
-                s_paused = false;
-            }
-        } else {
-            if (esp_comm_manager_send_command("nrf24", "pause")) {
-                s_paused = true;
-            }
-        }
-
+        // GhostLink peer removed -- remote mode can no longer reach a peer.
         nrf24_update_pause_ui();
         return;
     }
@@ -443,42 +428,8 @@ static void nrf24_hw_stop(void) {
 }
 #endif
 
-static void nrf24_stream_rx_cb(uint8_t channel, const uint8_t *data, size_t length, void *user_data) {
-    (void)channel;
-    (void)user_data;
-
-    if (!data || length < 4) {
-        return;
-    }
-    if (data[0] != NRF24_STREAM_VERSION) {
-        return;
-    }
-
-    uint8_t cursor = data[1];
-    uint8_t start_ch = data[2];
-    uint8_t count = data[3];
-
-    if (count == 0 || count > 32 || (size_t)(4 + count) > length) {
-        return;
-    }
-
-    for (uint8_t i = 0; i < count; i++) {
-        uint8_t ch = (uint8_t)((start_ch + i) % NRF24_CHANNEL_COUNT);
-        uint8_t level = data[4 + i];
-        s_levels[ch] = level;
-        if (level > s_peaks[ch]) {
-            s_peaks[ch] = level;
-        }
-    }
-
-    s_next_channel = (uint8_t)(cursor % NRF24_CHANNEL_COUNT);
-    s_remote_stream_online = true;
-    s_remote_error = false;
-    s_hw_ready = true;
-}
-
 void nrf24_analyzer_register_stream_handler(void) {
-    (void)esp_comm_manager_register_stream_handler(COMM_STREAM_CHANNEL_NRF24, nrf24_stream_rx_cb, NULL);
+    // GhostLink peer streaming removed; kept as a no-op for its boot call site.
 }
 
 void nrf24_analyzer_view_update_remote_state(const char *state) {
@@ -1430,11 +1381,6 @@ void nrf24_analyzer_create(void) {
 
     if (s_remote_mode) {
         s_paused = false;
-        if (esp_comm_manager_is_connected()) {
-            if (!esp_comm_manager_send_command("nrf24", "start")) {
-                s_remote_error = true;
-            }
-        }
         nrf24_update_pause_ui();
 #ifdef NRF24_JAM_DETECT_DEBUG
     } else {
@@ -1462,9 +1408,6 @@ void nrf24_analyzer_destroy(void) {
     nrf24_hw_stop();
 #endif
 
-    if (s_remote_mode && esp_comm_manager_is_connected()) {
-        (void)esp_comm_manager_send_command("nrf24", "stop");
-    }
 
     lvgl_obj_del_safe(&s_root);
     nrf24_analyzer_view.root = NULL;

@@ -16,7 +16,6 @@
 #include "esp_attr.h"
 #include "managers/views/keyboard_screen.h"
 #include "core/serial_manager.h"
-#include "core/esp_comm_manager.h"
 #include "gui/theme_palette_api.h"
 #include "gui/design_tokens.h"
 #include "esp_log.h"
@@ -671,7 +670,7 @@ static void handle_option(const char *option) {
             current_menu_state = BADUSB_MENU_SETTINGS;
             rebuild_menu();
         } else if (strcmp(option, "Run Script") == 0) {
-            if (remote && !esp_comm_manager_is_connected()) {
+            if (remote && !false) {
                 error_popup_create("Not connected to peer");
                 return;
             }
@@ -683,7 +682,7 @@ static void handle_option(const char *option) {
             current_menu_state = BADUSB_MENU_SCRIPT_SELECT;
             rebuild_menu();
         } else if (strcmp(option, "USB Keyboard") == 0) {
-            if (remote && !esp_comm_manager_is_connected()) {
+            if (remote && !false) {
                 error_popup_create("Not connected to peer");
                 return;
             }
@@ -715,7 +714,7 @@ static void handle_option(const char *option) {
 #endif
             }
         } else if (strcmp(option, "Mouse Jiggler") == 0) {
-            if (remote && !esp_comm_manager_is_connected()) {
+            if (remote && !false) {
                 error_popup_create("Not connected to peer");
                 return;
             }
@@ -739,7 +738,7 @@ static void handle_option(const char *option) {
             error_popup_create("No trackpad input");
             return;
 #else
-            if (remote && !esp_comm_manager_is_connected()) {
+            if (remote && !false) {
                 error_popup_create("Not connected to peer");
                 return;
             }

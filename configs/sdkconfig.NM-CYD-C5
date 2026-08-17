@@ -1167,11 +1167,8 @@ CONFIG_USE_TOUCHSCREEN=y
 # default:
 # CONFIG_USE_HW_KB is not set
 # default:
-# CONFIG_HAS_BADUSB_REMOTE is not set
 # default:
-# CONFIG_HAS_NRF24_REMOTE is not set
 # default:
-# CONFIG_HAS_SUBGHZ_REMOTE is not set
 # CONFIG_HAS_BATTERY is not set
 # default:
 # CONFIG_HAS_BATTERY_ADC is not set

@@ -14,7 +14,6 @@
 
 #include "managers/microphone/mic_driver.h"
 #include "managers/microphone/mic_goertzel.h"
-#include "core/esp_comm_manager.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
@@ -52,8 +51,7 @@ static void mic_visualizer_task(void *arg) {
     }
 
     uint32_t loop_counter = 0;
-    bool was_connected = false;
-    
+
     ESP_LOGI(TAG, "MIC visualizer task started");
     
     while (mic_visualizer_running) {
@@ -112,25 +110,6 @@ static void mic_visualizer_task(void *arg) {
             }
         }
         
-        // Send via GhostLink if connected
-        bool is_connected = esp_comm_manager_is_connected();
-        if (is_connected) {
-            bool send_ok = esp_comm_manager_send_stream(COMM_STREAM_CHANNEL_MIC_AMPLITUDE, 
-                                         payload, MIC_WIRE_PAYLOAD_LEN);
-            if (!send_ok) {
-                ESP_LOGW(TAG, "Failed to send MIC data (UART/busy?)");
-            } else if (!was_connected) {
-                ESP_LOGI(TAG, "GhostLink connected - sending MIC data");
-            }
-            
-            if (loop_counter % 1000 == 0) {
-                ESP_LOGD(TAG, "Sending B=%d L=%d H=%d T=%d A=%d (ok=%d)",
-                         payload[0], payload[1], payload[2], payload[3], payload[4], send_ok);
-            }
-        } else if (was_connected) {
-            ESP_LOGW(TAG, "GhostLink disconnected - MIC data not sending");
-        }
-        was_connected = is_connected;
         loop_counter++;
         
         // Target ~33 FPS (30ms delay)

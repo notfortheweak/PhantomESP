@@ -259,43 +259,6 @@ static bool process_rave_serial_byte(uint8_t byte) {
 // Forward declaration of command handler
 int handle_serial_command(const char *command);
 
-static bool handle_peer_badusb_trackpad_fast(const char *command) {
-#if defined(CONFIG_HAS_BADUSB)
-    char *end = NULL;
-
-    if (strncmp(command, "badusb trackpad_move ", 21) == 0) {
-        const char *p = command + 21;
-        long dx = strtol(p, &end, 10);
-        if (end == p) return true;
-        p = end;
-        while (isspace((unsigned char)*p)) p++;
-        long dy = strtol(p, &end, 10);
-        if (end == p) return true;
-        badusb_manager_trackpad_move((int)dx, (int)dy);
-        return true;
-    }
-
-    if (strncmp(command, "badusb trackpad_button ", 23) == 0) {
-        const char *p = command + 23;
-        unsigned long buttons = strtoul(p, &end, 0);
-        if (end == p) return true;
-        badusb_manager_trackpad_button((uint8_t)buttons);
-        return true;
-    }
-
-    if (strncmp(command, "badusb trackpad_wheel ", 22) == 0) {
-        const char *p = command + 22;
-        long delta = strtol(p, &end, 10);
-        if (end == p) return true;
-        badusb_manager_trackpad_wheel((int)delta);
-        return true;
-    }
-#else
-    (void)command;
-#endif
-    return false;
-}
-
 // Command history management functions
 void command_history_init(void) {
     command_history.current_index = 0;
@@ -1133,43 +1096,6 @@ void serial_manager_reacquire_uart(void) {
 }
 
 int handle_serial_command(const char *input) {
-  // Handle peer commands with logging and proper remote flag management
-  if (strncmp(input, "peer:", 5) == 0) {
-    static int peer_depth = 0;
-    if (peer_depth >= 4) {
-      glog("peer: command nesting too deep\n");
-      return ESP_FAIL;
-    }
-    const char* actual_command = input + 5;
-    esp_comm_manager_set_remote_command_flag(true);
-    bool quiet_badusb_setting =
-        strncmp(actual_command, "badusb set_", 11) == 0 ||
-        strncmp(actual_command, "badusb exec ", 12) == 0 ||
-        strcmp(actual_command, "badusb keyboard_start") == 0 ||
-        strcmp(actual_command, "badusb keyboard_stop") == 0 ||
-        strcmp(actual_command, "badusb jiggle_start") == 0 ||
-        strcmp(actual_command, "badusb jiggle_stop") == 0 ||
-        strncmp(actual_command, "badusb trackpad_move ", 21) == 0 ||
-        strncmp(actual_command, "badusb trackpad_button ", 23) == 0 ||
-        strncmp(actual_command, "badusb trackpad_wheel ", 22) == 0 ||
-        strcmp(actual_command, "badusb trackpad_start") == 0 ||
-        strcmp(actual_command, "badusb trackpad_stop") == 0 ||
-        strcmp(actual_command, "badusb stop") == 0;
-    if (!quiet_badusb_setting) {
-      glog("Received command from peer: %s\n", actual_command);
-      glog("Executing received command: %s\n", actual_command);
-    }
-    if (handle_peer_badusb_trackpad_fast(actual_command)) {
-      esp_comm_manager_set_remote_command_flag(false);
-      return ESP_OK;
-    }
-    peer_depth++;
-    int result = handle_serial_command(actual_command);
-    peer_depth--;
-    esp_comm_manager_set_remote_command_flag(false);
-    return result;
-  }
-  
   char expanded_input[SERIAL_BUFFER_SIZE];
   shell_expand_command(input, expanded_input, sizeof(expanded_input));
   char input_copy[SERIAL_BUFFER_SIZE];

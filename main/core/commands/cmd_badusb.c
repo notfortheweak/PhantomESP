@@ -2,7 +2,6 @@
 // BadUSB and USB keyboard host commands.
 
 #include "core/commands.h"
-#include "core/esp_comm_manager.h"
 #include "core/glog.h"
 #include "managers/settings_manager.h"
 #include "managers/usb_keyboard_manager.h"
@@ -45,7 +44,7 @@ static void badusb_strip_quotes(char *text) {
 
 void handle_badusb_cmd(int argc, char **argv) {
 #ifdef CONFIG_HAS_BADUSB
-    bool remote_request = esp_comm_manager_is_remote_command();
+    bool remote_request = false;
 
     if (argc < 2) {
         glog("Usage: badusb <run|list|stop|exec|set_vid|set_pid|set_mfr|set_prod|set_rand|set_layout|type|keysend|jiggle_start|jiggle_stop|keyboard_start|keyboard_stop|trackpad_start|trackpad_stop|trackpad_move|trackpad_button|trackpad_wheel>\n");

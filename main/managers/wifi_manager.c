@@ -25,7 +25,6 @@
 #include "managers/ap_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/ota_manager.h"
-#include "managers/peer_ota_manager.h"
 #include "managers/self_ota_manager.h"
 #include "managers/status_display_manager.h"
 #include "gui/toast.h"
@@ -51,7 +50,6 @@
 #include "managers/views/terminal_screen.h"
 #include "core/glog.h"
 #include "core/ghostesp_version.h"
-#include "core/esp_comm_manager.h"
 #include "core/utils.h" // Add utils include
 #include <inttypes.h>
 #include "core/commandline.h"
@@ -561,19 +559,6 @@ static void ota_auto_check_task(void *arg) {
                 status.latest_build_number > (long)GHOSTESP_BUILD_NUMBER) {
                 glog("There is a new update available: device firmware %s (build %ld > %ld)\n",
                      status.latest_version, status.latest_build_number, (long)GHOSTESP_BUILD_NUMBER);
-                update_available = true;
-            }
-        }
-    }
-
-    if (peer_ota_manager_is_supported() && esp_comm_manager_is_connected()) {
-        if (peer_ota_manager_check_now_blocking() == ESP_OK) {
-            PeerOtaStatus status = peer_ota_manager_get_status();
-            if (status.state == PEER_OTA_STATE_UPDATE_AVAILABLE &&
-                status.peer_current_build_number >= 0 &&
-                status.peer_build_number > status.peer_current_build_number) {
-                glog("There is a new update available: GhostLink peer firmware %s (build %ld > %ld)\n",
-                     status.peer_version, status.peer_build_number, status.peer_current_build_number);
                 update_available = true;
             }
         }

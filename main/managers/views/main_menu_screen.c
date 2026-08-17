@@ -21,7 +21,6 @@
 #include "managers/views/settings_screen.h"
 #include "managers/views/lockscreen.h"
 #include "managers/settings_manager.h"
-#include "core/esp_comm_manager.h"
 #include "managers/status_display_manager.h"
 #ifdef CONFIG_HAS_AUDIO_PLAYER
 #include "managers/views/audio_player_screen.h"
@@ -256,7 +255,7 @@ static void update_carousel_preview(lv_obj_t **preview_ptr, int visible_index, i
     lv_obj_set_style_opa(preview, LV_OPA_60, LV_PART_MAIN);
     lv_obj_align(preview, LV_ALIGN_CENTER, x_offset, 0);
 
-    bool connected = esp_comm_manager_is_connected();
+    bool connected = false;
     int menu_index = visible_index_to_menu_index(visible_index, connected);
     const lv_img_dsc_t *item_icon = menu_item_icon(menu_index);
     lv_obj_t *icon = lv_img_create(preview);
@@ -362,7 +361,7 @@ static void init_menu_colors(void) {
     uint8_t theme = settings_get_menu_theme(&G_Settings);
     refresh_menu_surface_colors();
 
-    bool connected = esp_comm_manager_is_connected();
+    bool connected = false;
     bool solid = theme_palette_is_solid(theme);
     for (int visible = 0; visible < num_items; visible++) {
         int menu_index = visible_index_to_menu_index(visible, connected);
@@ -417,7 +416,7 @@ static lv_obj_t *create_carousel_card(const main_menu_layout_metrics_t *layout,
     gui_apply_pressed_style(card);
     carousel_cache = (carousel_card_cache_t){0};
     carousel_cache.card = card;
-    bool connected = esp_comm_manager_is_connected();
+    bool connected = false;
     int menu_index = visible_index_to_menu_index(selected_item_index, connected);
 
     bool show_borders = settings_get_menu_item_borders(&G_Settings);
@@ -946,7 +945,7 @@ static void select_menu_item_with_scroll(int index, bool slide_left, lv_anim_ena
         if (list_buttons) {
             if (selected_item_index >= 0 && selected_item_index < num_items && list_buttons[selected_item_index]) {
                 lv_obj_t *old_btn = list_buttons[selected_item_index];
-                bool connected = esp_comm_manager_is_connected();
+                bool connected = false;
                 int menu_index_prev = visible_index_to_menu_index(selected_item_index, connected);
                 apply_card_style(old_btn, menu_surface_color,
                                  menu_items[menu_index_prev].border_color,
@@ -1007,7 +1006,7 @@ static void handle_menu_item_selection(int item_index) {
     };
 
     const int num_actions = sizeof(menu_actions) / sizeof(menu_actions[0]);
-    bool connected = esp_comm_manager_is_connected();
+    bool connected = false;
     int menu_index = visible_index_to_menu_index(item_index, connected);
     const char *name = menu_items[menu_index].name;
     const View *target_view = NULL;
@@ -1111,7 +1110,7 @@ static void create_launcher_menu(void) {
         return;
     }
 
-    bool connected = esp_comm_manager_is_connected();
+    bool connected = false;
     lv_obj_t *current_row = NULL;
     lv_obj_t *current_page = NULL;
 
@@ -1268,7 +1267,7 @@ static void create_list_menu(void) {
     /* List shows every menu item's icon simultaneously; see create_launcher_menu. */
     asset_pack_reset_icon_pins();
 
-    bool connected = esp_comm_manager_is_connected();
+    bool connected = false;
     for (int i = 0; i < num_items; i++) {
         int menu_index = visible_index_to_menu_index(i, connected);
         lv_obj_t *btn = lv_btn_create(menu_container);
@@ -1356,7 +1355,7 @@ static lv_obj_t *create_menu_container(lv_obj_t *root) {
 }
 
 static void menu_refresh_timer_cb(lv_timer_t *t) {
-    bool connected = esp_comm_manager_is_connected();
+    bool connected = false;
     uint32_t pack_version = asset_pack_get_version();
     if (connected != was_dual_comm_connected || pack_version != was_asset_pack_version) {
         was_dual_comm_connected = connected;
@@ -1389,7 +1388,7 @@ static void menu_refresh_timer_cb(lv_timer_t *t) {
 void main_menu_create(void) {
     refresh_menu_surface_colors();
     display_manager_fill_screen(menu_bg_color);
-    bool dual_comm_connected = esp_comm_manager_is_connected();
+    bool dual_comm_connected = false;
     was_dual_comm_connected = dual_comm_connected;
     was_asset_pack_version = asset_pack_get_version();
     

@@ -12,8 +12,6 @@
 #include "managers/sd_card_manager.h"
 #include "managers/settings_manager.h"
 #include "managers/ota_manager.h"
-#include "managers/peer_ota_manager.h"
-#include "managers/peer_storage_manager.h"
 #include "managers/self_ota_manager.h"
 #include "managers/crash_reporter.h"
 #include "managers/wifi_manager.h"
@@ -21,7 +19,6 @@
 #include "gui/toast.h"
 #include "managers/plugin_manager.h"
 #include "esp_wifi.h"
-#include "core/esp_comm_manager.h"
 #include "managers/status_display_manager.h"
 #include "vendor/drivers/pcf8563.h"
 #include <sys/time.h>
@@ -29,7 +26,6 @@
 #include <stdlib.h>
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "managers/ble_manager.h"
-#include "managers/ble_bridge_manager.h"
 #endif
 #include <esp_log.h>
 #include "esp_random.h"
@@ -59,9 +55,6 @@
 #ifdef CONFIG_HAS_CAMERA
 #include "managers/motion_detector_manager.h"
 #include "managers/camera_stream_manager.h"
-#endif
-#ifdef CONFIG_HAS_TLV320DAC_I2S
-#include "managers/audio_receiver_manager.h"
 #endif
 
 #ifdef CONFIG_WITH_SCREEN
@@ -566,11 +559,6 @@ static bool start_boot_app_discovery_task(void) {
 // gate (GhostLink session / board has Wi-Fi) is already satisfied.
 static void ota_background_check_task(void *arg) {
     (void)arg;
-    // GhostLink connects independently of Wi-Fi, so the peer check can go
-    // first; give the boot sequence a moment to settle either way.
-    vTaskDelay(pdMS_TO_TICKS(10000));
-    peer_ota_manager_background_check();
-
     // Extra time for Wi-Fi to connect (if configured) and DNS to be ready --
     // Cardputer ADV and similar boards need it.
     vTaskDelay(pdMS_TO_TICKS(10000));
@@ -768,14 +756,11 @@ void app_main(void) {
 #endif
 
 #if GHOSTESP_OTA_SUPPORTED
-    // Gated the same as the ota_manager_init() call above -- peer_ota_manager.c
-    // and self_ota_manager.c are only ever meaningfully used on 8MB/16MB boards
-    // (somethingsomething/somethingsomething2 today), but without this guard
-    // these calls would reference their symbols unconditionally on every board,
-    // pulling both files' static buffers into every 4MB build's BSS for nothing.
-    if (peer_ota_manager_is_supported()) {
-        peer_ota_manager_init();
-    }
+    // Gated the same as the ota_manager_init() call above -- self_ota_manager.c
+    // is only ever meaningfully used on 8MB/16MB boards (somethingsomething/
+    // somethingsomething2 today), but without this guard this call would
+    // reference its symbols unconditionally on every board, pulling its
+    // static buffers into every 4MB build's BSS for nothing.
     if (self_ota_manager_is_supported()) {
         MEASURE_INIT_RAM("Self-OTA manager init", self_ota_manager_init());
     }
@@ -814,48 +799,18 @@ void app_main(void) {
     ESP_LOGI(TAG, "Configuring WiFi STA from settings");
     MEASURE_INIT_RAM("WiFi STA Config", wifi_manager_configure_sta_from_settings());
 
-    ESP_LOGI(TAG, "Initializing Comm Manager");
-    {
-        int32_t comm_tx = G_Settings.esp_comm_tx_pin;
-        int32_t comm_rx = G_Settings.esp_comm_rx_pin;
-#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
-        if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "NM-CYD-C5") == 0 &&
-            comm_tx == 6 && comm_rx == 7) {
-            comm_tx = 11;
-            comm_rx = 12;
-        } else if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "Pancake") == 0 ||
-                   strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "MarauderV8") == 0) {
-            comm_tx = UART_PIN_NO_CHANGE;
-            comm_rx = UART_PIN_NO_CHANGE;
-        }
-#endif
-        if (comm_tx != UART_PIN_NO_CHANGE || comm_rx != UART_PIN_NO_CHANGE) {
-            MEASURE_INIT_RAM("Comm Manager", esp_comm_manager_init((gpio_num_t)comm_tx, (gpio_num_t)comm_rx, DEFAULT_BAUD_RATE));
-        } else {
-            ESP_LOGI(TAG, "Comm Manager disabled for this build");
-        }
-    }
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-    MEASURE_INIT_RAM("BLE Bridge restore", ble_bridge_apply_saved_enabled());
-#endif
+    // GhostLink (Comm Manager / BLE Bridge / peer storage) removed --
+    // the stream-handler registrations below are now no-ops kept for
+    // their call sites; nothing feeds them data anymore.
     wardriving_register_stream_handler();
     usb_keyboard_manager_register_stream_handler();
 #ifdef CONFIG_HAS_BADUSB
     badusb_manager_register_stream_handler();
 #endif
-#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
-    if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething") == 0) {
-        peer_storage_manager_init_peer();
-    }
-#endif
 #ifdef CONFIG_HAS_MIC
     // Initialize MIC visualizer (will start sending amplitude over GhostLink when connected)
     MEASURE_INIT_RAM("Mic Visualizer init", mic_visualizer_init());
     mic_visualizer_start();
-#endif
-#ifdef CONFIG_HAS_TLV320DAC_I2S
-    ESP_LOGI(TAG, "Initializing audio receiver for TLV320DAC3100 I2S");
-    MEASURE_INIT_RAM("Audio Receiver", audio_receiver_manager_init());
 #endif
 #ifdef CONFIG_HAS_CAMERA
     MEASURE_INIT_RAM("Motion Detector init", motion_detector_init());

@@ -94,9 +94,6 @@ void handle_help(int argc, char **argv) {
         glog("blescan -ds\n");
         glog("    Description: Detect BLE advertisement-spam / attack floods nearby.\n");
         glog("    Usage: blescan -ds   (blescan -s to stop)\n\n");
-        glog("capture -skimmer\n");
-        glog("    Description: Detect BLE credit-card skimmers.\n");
-        glog("    Usage: capture -skimmer   (capture -stop to stop)\n\n");
 #endif
         glog("Related: 'congestion' and 'listenprobes' (help wifi), 'startwd' (help gps).\n\n");
         return;
