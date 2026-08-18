@@ -78,6 +78,21 @@ static esp_err_t api_logs_handler(httpd_req_t *req);
 static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                           void *event_data);
 
+// ap_manager_init() and ap_manager_start_services() can both run across the
+// device's lifetime (the latter is an idempotent "ensure AP services are
+// up" call, invoked again whenever AP settings change), and each used to
+// unconditionally (re-)register the same three handlers below, which just
+// spams "handler already registered, overwriting" from the esp_event
+// component on every re-run. Register once for the process lifetime.
+static bool s_wifi_event_handlers_registered = false;
+static void register_wifi_event_handlers_once(void) {
+    if (s_wifi_event_handlers_registered) return;
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_AP_STAIPASSIGNED, &event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
+    s_wifi_event_handlers_registered = true;
+}
+
 static esp_err_t load_server_config(void);
 static esp_err_t start_http_server(void);
 static esp_err_t stop_http_server(void);
@@ -873,11 +888,7 @@ esp_err_t ap_manager_init(void) {
     glog("Wi-Fi Access Point started with SSID: %s\n", ssid);
 
     // Register event handlers for Wi-Fi events if not registered already
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-    ESP_ERROR_CHECK(
-        esp_event_handler_register(IP_EVENT, IP_EVENT_AP_STAIPASSIGNED, &event_handler, NULL));
-    ESP_ERROR_CHECK(
-        esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
+    register_wifi_event_handlers_once();
 
     // Initialize mDNS
     ret = setup_mdns();
@@ -983,9 +994,7 @@ esp_err_t ap_manager_start_services() {
         return ret;
     }
 
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_AP_STAIPASSIGNED, &event_handler, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
+    register_wifi_event_handlers_once();
 
     if (server != NULL) {
         ESP_LOGI(TAG, "HTTP server already running; skipping restart");

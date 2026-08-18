@@ -78,8 +78,6 @@ static inline bool is_on_target_channel(const wifi_promiscuous_pkt_t *pkt, uint8
 #define WARDRIVE_OBS_QUEUE_PSRAM_LEN 64
 #define WARDRIVE_OBS_QUEUE_INTERNAL_LEN 32
 #define WARDRIVE_OBS_TASK_STACK_BYTES 8192
-#define PEER_GPS_STREAM_INTERVAL_MS 1000
-#define PEER_GPS_INIT_RETRY_MS 5000
 #define RECENT_SSID_COUNT 5
 #define LOG_DELAY_MS 5000
 #define PROBE_DEDUPE_TIMEOUT_MS 1000
@@ -118,9 +116,6 @@ static uint32_t peer_gps_stream_tx_ok = 0;
 static uint32_t peer_gps_stream_tx_fail = 0;
 static uint32_t peer_gps_stream_rx_packets = 0;
 static uint32_t peer_gps_stream_rx_fix_packets = 0;
-static TaskHandle_t peer_gps_stream_task_handle = NULL;
-static StackType_t *peer_gps_stream_stack = NULL;
-static StaticTask_t *peer_gps_stream_tcb = NULL;
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #define BLE_WD_SEEN_SIZE 64
@@ -247,9 +242,7 @@ static inline int16_t wardrive_get_i16le(const uint8_t *src);
 static bool wardrive_is_valid_date(const gps_date_t *date);
 static bool wardrive_is_valid_time(const gps_time_t *tim);
 static inline uint32_t now_ms_u32(void);
-static bool wardrive_send_peer_gps_stream(void);
 static bool wardrive_send_helper_status(void);
-static void peer_gps_stream_task(void *arg);
 static uint32_t wardrive_get_hop_interval_ms(void);
 static void wardrive_apply_hop_interval(void);
 static uint8_t wardrive_build_full_channel_list(uint8_t *full_channels);
@@ -643,45 +636,6 @@ static bool wardrive_send_helper_observation(const uint8_t *bssid,
     (void)auth_code;
     (void)ssid;
     return false;
-}
-
-static bool wardrive_send_peer_gps_stream(void) {
-    // GhostLink peer streaming removed -- no peer to ever be connected to.
-    return false;
-}
-
-static void peer_gps_stream_task(void *arg) {
-    (void)arg;
-    int64_t last_init_try_ms = 0;
-    gps_t gps_local = {0};
-
-    while (1) {
-        if (false) {
-#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
-            if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething2") == 0 &&
-                !g_gpsManager.isinitilized) {
-                int64_t now_ms = esp_timer_get_time() / 1000;
-                if ((now_ms - last_init_try_ms) >= PEER_GPS_INIT_RETRY_MS) {
-                    gps_manager_init(&g_gpsManager);
-                    last_init_try_ms = now_ms;
-                }
-            }
-#endif
-
-            if (gps_manager_has_recent_update() && gps_manager_get_local_gps_snapshot(&gps_local)) {
-                if (wardrive_send_peer_gps_stream()) {
-                    peer_gps_stream_tx_ok++;
-                } else {
-                    peer_gps_stream_tx_fail++;
-                }
-            }
-            if (wardrive_role == WARDRIVE_ROLE_HELPER) {
-                (void)wardrive_send_helper_status();
-            }
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(PEER_GPS_STREAM_INTERVAL_MS));
-    }
 }
 
 static uint32_t wardrive_get_hop_interval_ms(void) {
@@ -1932,33 +1886,6 @@ void stop_pineap_detection(void) {
 
 void wardriving_register_stream_handler(void) {
     // GhostLink peer streaming removed; kept as a no-op for main.c's boot call.
-    if (peer_gps_stream_task_handle == NULL) {
-        peer_gps_stream_stack = heap_caps_malloc(3072 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
-        peer_gps_stream_tcb = malloc(sizeof(StaticTask_t));
-        if (peer_gps_stream_stack && peer_gps_stream_tcb) {
-            peer_gps_stream_task_handle = xTaskCreateStatic(
-                peer_gps_stream_task,
-                "peer_gps_stream",
-                3072,
-                NULL,
-                3,
-                peer_gps_stream_stack,
-                peer_gps_stream_tcb);
-            ESP_LOGI(TAG, "Peer GPS stream task stack allocated from PSRAM: %d bytes", 
-                     (int)(3072 * sizeof(StackType_t)));
-        }
-        if (!peer_gps_stream_task_handle) {
-            if (peer_gps_stream_stack) {
-                free(peer_gps_stream_stack);
-                peer_gps_stream_stack = NULL;
-            }
-            if (peer_gps_stream_tcb) {
-                free(peer_gps_stream_tcb);
-                peer_gps_stream_tcb = NULL;
-            }
-            ESP_LOGW(TAG, "Peer GPS stream task create failed");
-        }
-    }
 }
 
 bool wardriving_get_helper_channel_plan_csv(char *out, size_t out_len) {

@@ -373,9 +373,13 @@ esp_err_t pcap_init(void) {
     return ESP_FAIL;
   }
 
-  // Allocate PCAP buffer in PSRAM if available, otherwise use internal RAM
+  // Allocate PCAP buffer in PSRAM if available, otherwise use internal RAM.
+  // Boards without CONFIG_SPIRAM have no PSRAM heap at all, so skip straight
+  // to internal RAM there instead of a request that's guaranteed to fail.
   if (pcap_buffer == NULL) {
+#ifdef CONFIG_SPIRAM
     pcap_buffer = heap_caps_malloc(PCAP_BUFFER_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#endif
     if (pcap_buffer == NULL) {
       pcap_buffer = malloc(PCAP_BUFFER_SIZE);
     }
