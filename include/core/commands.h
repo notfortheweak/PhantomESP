@@ -126,7 +126,13 @@ typedef struct {
     bool running;
 } sweep_result_t;
 
-void sweep_start_async(int wifi_seconds, int ble_seconds);
+typedef enum {
+    SWEEP_SCOPE_ALL = 0,
+    SWEEP_SCOPE_WIFI_ONLY,
+    SWEEP_SCOPE_BLE_ONLY,
+} sweep_scope_t;
+
+void sweep_start_async(int wifi_seconds, int ble_seconds, sweep_scope_t scope);
 bool sweep_check_done(void);
 void sweep_finish_async(void);
 bool sweep_is_running(void);

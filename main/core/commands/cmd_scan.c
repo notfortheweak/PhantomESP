@@ -31,6 +31,27 @@ void wifi_manager_scanall_chart();
 static sweep_result_t g_sweep_result = {0};
 static int g_sweep_wifi_seconds = 10;
 static int g_sweep_ble_seconds = 10;
+static sweep_scope_t g_sweep_scope = SWEEP_SCOPE_ALL;
+
+// How many phases sweep_run_internal will actually execute for a given
+// scope on this target, so progress ("Phase N/total") is never wrong or
+// stuck below 100% (e.g. ESP32-S2 has no BLE at all, and -wifi-only/
+// -ble-only trims phases further).
+static int sweep_compute_total_phases(sweep_scope_t scope) {
+    int total = 0;
+    if (scope != SWEEP_SCOPE_BLE_ONLY) {
+        total += 2; // WiFi AP scan, WiFi station scan
+    }
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+    if (scope != SWEEP_SCOPE_WIFI_ONLY) {
+        total += 3; // BLE Flipper, BLE GATT, BLE raw packet
+#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
+        total += 1; // 802.15.4
+#endif
+    }
+#endif
+    return total > 0 ? total : 1;
+}
 
 static int get_next_sweep_file_index(void);
 static const char* sweep_get_auth_str(wifi_auth_mode_t auth);
@@ -49,8 +70,14 @@ const sweep_result_t* sweep_get_result(void) {
 static void sweep_run_internal(void) {
     int wifi_seconds = g_sweep_wifi_seconds;
     int ble_seconds = g_sweep_ble_seconds;
+    sweep_scope_t scope = g_sweep_scope;
+    bool do_wifi = (scope != SWEEP_SCOPE_BLE_ONLY);
+    bool do_ble = (scope != SWEEP_SCOPE_WIFI_ONLY);
+    int phase_num = 0;
 
-    glog("=== Starting Full Environment Sweep ===\n");
+    glog("=== Starting %s Sweep ===\n",
+         scope == SWEEP_SCOPE_WIFI_ONLY ? "WiFi-Only" :
+         scope == SWEEP_SCOPE_BLE_ONLY ? "BLE-Only" : "Full Environment");
     status_display_show_status("Sweep Start");
 
     FILE *report = NULL;
@@ -63,6 +90,8 @@ static void sweep_run_internal(void) {
     }
 
     int open_networks = 0, weak_networks = 0, secure_networks = 0;
+    uint16_t ap_cnt = 0;
+    station_count = 0;
 
     if (sd_card_exists(SD_GHOSTESP_ROOT)) {
         (void)sd_card_create_directory(SD_DIR_SWEEPS);
@@ -75,13 +104,13 @@ static void sweep_run_internal(void) {
         }
     }
 
+    if (do_wifi) {
     // --- WiFi AP Scan ---
-    g_sweep_result.current_phase = 1;
-    glog("\n--- Phase 1: WiFi AP Scan (%ds) ---\n", wifi_seconds);
+    g_sweep_result.current_phase = ++phase_num;
+    glog("\n--- Phase %d: WiFi AP Scan (%ds) ---\n", phase_num, wifi_seconds);
 
     wifi_manager_start_scan_with_time(wifi_seconds);
 
-    uint16_t ap_cnt = 0;
     wifi_ap_record_t *aps = NULL;
     wifi_manager_get_scan_results_data(&ap_cnt, &aps);
     g_sweep_result.ap_count = ap_cnt;
@@ -125,8 +154,8 @@ static void sweep_run_internal(void) {
     }
 
     // --- WiFi Station Scan ---
-    g_sweep_result.current_phase = 2;
-    glog("\n--- Phase 2: WiFi Station Scan (%ds) ---\n", wifi_seconds);
+    g_sweep_result.current_phase = ++phase_num;
+    glog("\n--- Phase %d: WiFi Station Scan (%ds) ---\n", phase_num, wifi_seconds);
 
     station_count = 0;
     wifi_manager_start_station_scan();
@@ -152,11 +181,13 @@ static void sweep_run_internal(void) {
             }
         }
     }
+    } // do_wifi
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
+    if (do_ble) {
     // --- BLE Scans ---
-    g_sweep_result.current_phase = 3;
-    glog("\n--- Phase 3: BLE Flipper Scan (%ds) ---\n", ble_seconds);
+    g_sweep_result.current_phase = ++phase_num;
+    glog("\n--- Phase %d: BLE Flipper Scan (%ds) ---\n", phase_num, ble_seconds);
 
     flipper_scan_start();
     vTaskDelay(pdMS_TO_TICKS(ble_seconds * 1000));
@@ -184,8 +215,8 @@ static void sweep_run_internal(void) {
         }
     }
 
-    g_sweep_result.current_phase = 4;
-    glog("\n--- Phase 4: BLE GATT Device Scan (%ds) ---\n", ble_seconds);
+    g_sweep_result.current_phase = ++phase_num;
+    glog("\n--- Phase %d: BLE GATT Device Scan (%ds) ---\n", phase_num, ble_seconds);
 
     ble_start_gatt_scan();
     vTaskDelay(pdMS_TO_TICKS(ble_seconds * 1000));
@@ -213,18 +244,20 @@ static void sweep_run_internal(void) {
         }
     }
 
-    g_sweep_result.current_phase = 5;
-    glog("\n--- Phase 5: BLE Raw Packet Scan (%ds) ---\n", ble_seconds);
+    g_sweep_result.current_phase = ++phase_num;
+    glog("\n--- Phase %d: BLE Raw Packet Scan (%ds) ---\n", phase_num, ble_seconds);
     vTaskDelay(pdMS_TO_TICKS(500));
 
     ble_start_raw_ble_packetscan();
     vTaskDelay(pdMS_TO_TICKS(ble_seconds * 1000));
     ble_stop();
+    } // do_ble
 #endif
 
 #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-    g_sweep_result.current_phase = 6;
-    glog("\n--- Phase 6: 802.15.4 Scan (%ds) ---\n", ble_seconds);
+    if (do_ble) {
+    g_sweep_result.current_phase = ++phase_num;
+    glog("\n--- Phase %d: 802.15.4 Scan (%ds) ---\n", phase_num, ble_seconds);
     vTaskDelay(pdMS_TO_TICKS(500));
 
     zigbee_manager_clear_devices();
@@ -256,6 +289,7 @@ static void sweep_run_internal(void) {
             }
         }
     }
+    } // do_ble
 #endif
 
     if (report) {
@@ -265,8 +299,16 @@ static void sweep_run_internal(void) {
 
     ap_manager_start_services();
     glog("\n=== Sweep Complete ===\n");
-    glog("WiFi: %d APs, %d stations | Security: %d open, %d weak, %d secure\n",
-         ap_cnt, station_count, open_networks, weak_networks, secure_networks);
+    if (do_wifi) {
+        glog("WiFi: %d APs, %d stations | Security: %d open, %d weak, %d secure\n",
+             ap_cnt, station_count, open_networks, weak_networks, secure_networks);
+    }
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+    if (do_ble) {
+        glog("BLE: %d Flippers, %d GATT devices\n",
+             g_sweep_result.flipper_count, g_sweep_result.gatt_count);
+    }
+#endif
     status_display_show_status("Sweep Done");
     g_sweep_result.done = true;
 }
@@ -277,13 +319,14 @@ static void sweep_task(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
-void sweep_start_async(int wifi_seconds, int ble_seconds) {
+void sweep_start_async(int wifi_seconds, int ble_seconds, sweep_scope_t scope) {
     if (g_sweep_result.running) return;
     sweep_clear_result();
     g_sweep_wifi_seconds = wifi_seconds < 1 ? 10 : wifi_seconds;
     g_sweep_ble_seconds = ble_seconds < 1 ? 10 : ble_seconds;
+    g_sweep_scope = scope;
     g_sweep_result.running = true;
-    g_sweep_result.total_phases = 6;
+    g_sweep_result.total_phases = sweep_compute_total_phases(scope);
     xTaskCreate_psram(sweep_task, "sweep", 8192, NULL, 5, NULL);
 }
 
@@ -414,6 +457,7 @@ static void sweep_write_csv_escaped(FILE *f, const char *str) {
 void handle_sweep_cmd(int argc, char **argv) {
     int wifi_seconds = 10;
     int ble_seconds = 10;
+    sweep_scope_t scope = SWEEP_SCOPE_ALL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-w") == 0 && i + 1 < argc) {
@@ -422,14 +466,35 @@ void handle_sweep_cmd(int argc, char **argv) {
         } else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
             ble_seconds = atoi(argv[++i]);
             if (ble_seconds < 1) ble_seconds = 10;
+        } else if (strcmp(argv[i], "-wifi-only") == 0) {
+            if (scope == SWEEP_SCOPE_BLE_ONLY) {
+                glog("Error: -wifi-only and -ble-only are mutually exclusive.\n");
+                return;
+            }
+            scope = SWEEP_SCOPE_WIFI_ONLY;
+        } else if (strcmp(argv[i], "-ble-only") == 0) {
+            if (scope == SWEEP_SCOPE_WIFI_ONLY) {
+                glog("Error: -wifi-only and -ble-only are mutually exclusive.\n");
+                return;
+            }
+            scope = SWEEP_SCOPE_BLE_ONLY;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0) {
-            glog("Usage: sweep [-w wifi_sec] [-b ble_sec]\n");
-            glog("  -w: WiFi scan duration per phase (default 10s)\n");
-            glog("  -b: BLE scan duration per phase (default 10s)\n");
-            glog("Performs AP scan, STA scan, BLE scans and saves to SD.\n");
+            glog("Usage: sweep [-wifi-only | -ble-only] [-w wifi_sec] [-b ble_sec]\n");
+            glog("  -wifi-only : Only scan WiFi (AP + station phases)\n");
+            glog("  -ble-only  : Only scan BLE (Flipper/GATT/raw phases)\n");
+            glog("  -w  : WiFi scan duration per phase (default 10s)\n");
+            glog("  -b  : BLE scan duration per phase (default 10s)\n");
+            glog("With neither switch, performs AP scan, STA scan, BLE scans and saves to SD.\n");
             return;
         }
     }
 
-    sweep_start_async(wifi_seconds, ble_seconds);
+#ifdef CONFIG_IDF_TARGET_ESP32S2
+    if (scope == SWEEP_SCOPE_BLE_ONLY) {
+        glog("Error: this board has no BLE hardware; -ble-only would scan nothing.\n");
+        return;
+    }
+#endif
+
+    sweep_start_async(wifi_seconds, ble_seconds, scope);
 }

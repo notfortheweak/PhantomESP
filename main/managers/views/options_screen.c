@@ -2334,7 +2334,7 @@ static void sweep_poll_timer_cb(lv_timer_t *timer) {
     const sweep_result_t *res = sweep_get_result();
     if (res && sweep_scan_status) {
         char msg[48];
-        snprintf(msg, sizeof(msg), "Phase %d/6...", res->current_phase);
+        snprintf(msg, sizeof(msg), "Phase %d/%d...", res->current_phase, res->total_phases);
         scan_status_set_subtext(sweep_scan_status, msg);
     }
     if (sweep_check_done()) {
@@ -2362,7 +2362,7 @@ static bool start_sweep_flow(void) {
     if (sweep_scan_status) {
         scan_status_set_subtext(sweep_scan_status, "Starting...");
     }
-    sweep_start_async(10, 10);
+    sweep_start_async(10, 10, SWEEP_SCOPE_ALL);
     sweep_poll_timer = lv_timer_create(sweep_poll_timer_cb, 200, NULL);
     return true;
 }
