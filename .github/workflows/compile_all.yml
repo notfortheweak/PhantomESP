@@ -39,7 +39,7 @@ jobs:
           - { name: "esp32c5-generic",         idf_target: "esp32c5", sdkconfig_file: "configs/sdkconfig.default.esp32c5",                 zip_name: "esp32c5-generic-v01.zip" }
           - { name: "esp32c6-generic",         idf_target: "esp32c6", sdkconfig_file: "configs/sdkconfig.default.esp32c6",                 zip_name: "esp32c6-generic.zip" }
           - { name: "XIAO_C5",                 idf_target: "esp32c5", sdkconfig_file: "configs/sdkconfig.xiao_esp32c5",                    zip_name: "XIAO_C5.zip" }
-
+          - { name: "CYD2432S028R", idf_target: "esp32", sdkconfig_file: "configs/sdkconfig.CYD2432S028R", zip_name: "CYD2432S028R.zip" }
     steps:
       - uses: actions/checkout@v4
 
