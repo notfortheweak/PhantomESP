@@ -17,13 +17,13 @@ void handle_help(int argc, char **argv) {
     const char *category = (argc > 1) ? argv[1] : "unknown"; // Default to "unknown" if no category is provided to fall through ifs
 
     // List of all categories to print in order. Detection leads. sweep,
-    // flockscan, pineap and aerialscan are broken out of "detect" into
-    // their own top-level topics (same layer as detect/wifi/ble) so
-    // their usage fits on-screen without scrolling past it -- see
-    // 'help detect' for the rest of the detection family (wpa3check/
-    // airtags/flippers/blescan).
+    // flockscan, pineap, aerialscan and wpa3check are broken out of
+    // "detect" into their own top-level topics (same layer as
+    // detect/wifi/ble) so their usage fits on-screen without scrolling
+    // past it -- see 'help detect' for the rest of the detection family
+    // (airtags/flippers/blescan).
     const char *all_categories[] = {
-        "detect", "sweep", "flockscan", "pineap", "aerialscan", "wifi", "ble", "gps", "wigle", "sd"
+        "detect", "sweep", "flockscan", "pineap", "aerialscan", "wpa3check", "wifi", "ble", "gps", "wigle", "sd"
 #ifdef CONFIG_HAS_INFRARED
         , "ir"
 #endif
@@ -97,16 +97,22 @@ void handle_help(int argc, char **argv) {
         return;
     }
 
-    if (strcmp(category, "detect") == 0) {
-        glog("\nCounter-Surveillance Detection:\n\n");
-        glog("sweep       - Full environment sweep, WiFi + BLE  (help sweep)\n");
-        glog("flockscan   - Flock Safety camera detection       (help flockscan)\n");
-        glog("pineap      - WiFi Pineapple / rogue AP detection (help pineap)\n");
-        glog("aerialscan  - Drone / Remote ID detection         (help aerialscan)\n\n");
-        glog("wpa3check\n");
+    if (strcmp(category, "wpa3check") == 0) {
+        glog("\nwpa3check\n");
         glog("    Description: Audit AP security posture - WPA3 presence, transition\n");
         glog("                 mode, and PMF (management-frame protection).\n");
         glog("    Usage: wpa3check (after 'scanap', optionally 'select -a <index>')\n\n");
+        glog("See also: help detect, help sweep, help flockscan, help pineap, help aerialscan.\n\n");
+        return;
+    }
+
+    if (strcmp(category, "detect") == 0) {
+        glog("\nCounter-Surveillance Detection:\n\n");
+        glog("sweep      - Full environment sweep, WiFi + BLE  (help sweep)\n");
+        glog("flockscan  - Flock Safety camera detection       (help flockscan)\n");
+        glog("pineap     - WiFi Pineapple / rogue AP detection (help pineap)\n");
+        glog("aerialscan - Drone / Remote ID detection         (help aerialscan)\n");
+        glog("wpa3check  - AP security audit (WPA3 / PMF)      (help wpa3check)\n\n");
 #ifndef CONFIG_IDF_TARGET_ESP32S2
         glog("listairtags\n");
         glog("    Description: List nearby Apple AirTags / trackers.\n");
@@ -198,7 +204,7 @@ void handle_help(int argc, char **argv) {
         glog("    Arguments:\n");
         glog("        <CC> : Country code (\"01\" world-safe) or two-letter ISO (e.g., US)\n\n");
 #endif
-        glog("See also: 'wpa3check' (help detect), 'pineap' (help pineap), 'sweep' (help sweep).\n\n");
+        glog("See also: 'wpa3check' (help wpa3check), 'pineap' (help pineap), 'sweep' (help sweep).\n\n");
         return;
     }
 
@@ -296,22 +302,23 @@ void handle_help(int argc, char **argv) {
 
     glog("\nGhost ESP Command Categories:\n\n");
 
-    glog("  help detect    - Counter-surveillance detection (start here)\n");
-    glog("  help sweep     - Full environment sweep, WiFi + BLE\n");
-    glog("  help flockscan - Flock Safety camera detection\n");
-    glog("  help pineap    - WiFi Pineapple / rogue AP detection\n");
+    glog("  help detect     - Counter-surveillance detection (start here)\n");
+    glog("  help sweep      - Full environment sweep, WiFi + BLE\n");
+    glog("  help flockscan  - Flock Safety camera detection\n");
+    glog("  help pineap     - WiFi Pineapple / rogue AP detection\n");
     glog("  help aerialscan - Drone / Remote ID detection\n");
-    glog("  help wifi      - Wi-Fi scan & analyze commands\n");
+    glog("  help wpa3check  - AP security audit (WPA3 / PMF)\n");
+    glog("  help wifi       - Wi-Fi scan & analyze commands\n");
 #ifndef CONFIG_IDF_TARGET_ESP32S2
-    glog("  help ble       - Bluetooth/BLE scan commands\n");
+    glog("  help ble        - Bluetooth/BLE scan commands\n");
 #endif
-    glog("  help gps       - GPS & wardriving commands\n");
-    glog("  help wigle     - WiGLE upload commands\n");
-    glog("  help sd        - SD card commands\n");
+    glog("  help gps        - GPS & wardriving commands\n");
+    glog("  help wigle      - WiGLE upload commands\n");
+    glog("  help sd         - SD card commands\n");
 #ifdef CONFIG_HAS_INFRARED
-    glog("  help ir        - Infrared receive/learn commands\n");
+    glog("  help ir         - Infrared receive/learn commands\n");
 #endif
-    glog("  help all       - All commands\n\n");
+    glog("  help all        - All commands\n\n");
 
     glog("Type 'help <category>' for details on that category.\n\n");
 }
