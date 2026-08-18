@@ -53,7 +53,7 @@ jobs:
           path: |
             ~/esp-idf
             ~/.espressif
-          key: esp-idf-v6.0-${{ runner.os }}-v1
+          key: esp-idf-v6.0-${{ runner.os }}-v3
           restore-keys: |
             esp-idf-v6.0-${{ runner.os }}-
 
