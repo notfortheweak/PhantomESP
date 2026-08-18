@@ -19,14 +19,12 @@ void handle_help(int argc, char **argv) {
     // List of all categories to print in order. Detection leads. sweep,
     // flockscan, pineap, aerialscan and wpa3check are broken out of
     // "detect" into their own top-level topics (same layer as
-    // detect/wifi/wardriving) so their usage fits on-screen without
-    // scrolling past it -- see 'help detect' for the rest of the
-    // detection family (blescan/airtags/flippers). BLE has no category
-    // of its own anymore: blescan/listadv folded into 'detect', and
-    // blewardriving joined the other wardriving commands (startwd,
-    // wdstream) under 'wardriving'.
+    // detect/wifi/gps) so their usage fits on-screen without scrolling
+    // past it -- see 'help detect' for the rest of the detection family
+    // (blescan/airtags/flippers/blewardriving). BLE has no category of
+    // its own anymore: blescan/listadv/blewardriving folded into 'detect'.
     const char *all_categories[] = {
-        "detect", "sweep", "flockscan", "pineap", "aerialscan", "wpa3check", "wifi", "wardriving", "gps", "wigle", "sd"
+        "detect", "sweep", "flockscan", "pineap", "aerialscan", "wpa3check", "wifi", "gps", "wigle", "sd"
 #ifdef CONFIG_HAS_INFRARED
         , "ir"
 #endif
@@ -111,27 +109,6 @@ void handle_help(int argc, char **argv) {
         return;
     }
 
-    if (strcmp(category, "wardriving") == 0) {
-        glog("\nWardriving Commands:\n\n");
-        glog("startwd\n");
-        glog("    Description: GPS-tagged WiFi/BLE wardriving, logged to CSV on SD card.\n");
-        glog("    Usage: startwd [-s] [--helper] [--channels <csv>] [--hop <ms>] [--weighted]\n\n");
-        glog("wdstream\n");
-        glog("    Description: Stream WiFi/BLE observations over serial for companion-app wardriving.\n");
-        glog("    Usage: wdstream start [-wifi] [-ble] [-i <ms>] [-ch auto|1|1,6,11]\n");
-        glog("           wdstream stop | wdstream status\n\n");
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        glog("blewardriving\n");
-        glog("    Description: Start/Stop BLE wardriving with GPS logging.\n");
-        glog("    Usage: blewardriving [-s]\n");
-        glog("    Arguments:\n");
-        glog("        -s  : Stop BLE wardriving\n\n");
-#endif
-        glog("See also: 'gpsinfo/gpspin/gpsbaud' (help gps) to set up GPS,\n");
-        glog("          'wigle upload' (help wigle) to upload results.\n\n");
-        return;
-    }
-
     if (strcmp(category, "detect") == 0) {
         glog("\nCounter-Surveillance Detection:\n\n");
         glog("sweep      - Full environment sweep, WiFi + BLE  (help sweep)\n");
@@ -156,6 +133,11 @@ void handle_help(int argc, char **argv) {
         glog("listadv\n");
         glog("    Description: List parsed BLE advertisers from blescan -adv.\n");
         glog("    Usage: listadv\n\n");
+        glog("blewardriving\n");
+        glog("    Description: Start/Stop BLE wardriving with GPS logging.\n");
+        glog("    Usage: blewardriving [-s]\n");
+        glog("    Arguments:\n");
+        glog("        -s  : Stop BLE wardriving\n\n");
         glog("listairtags\n");
         glog("    Description: List nearby Apple AirTags / trackers.\n");
         glog("    Usage: listairtags   (populated by 'blescan -a')\n\n");
@@ -169,7 +151,7 @@ void handle_help(int argc, char **argv) {
         glog("    Description: Select a discovered Flipper by index.\n");
         glog("    Usage: selectflipper <index>\n\n");
 #endif
-        glog("Related: 'congestion' and 'listenprobes' (help wifi), 'help wardriving' for GPS-logged scans.\n\n");
+        glog("Related: 'congestion' and 'listenprobes' (help wifi), 'startwd' (help gps).\n\n");
         return;
     }
 
@@ -219,6 +201,10 @@ void handle_help(int argc, char **argv) {
         glog("    Description: Track selected station signal strength (RSSI).\n");
         glog("    Usage: tracksta\n");
         glog("    Note: select a station first with 'select -s <index>'\n\n");
+        glog("wdstream\n");
+        glog("    Description: Stream WiFi/BLE observations over serial for companion-app wardriving.\n");
+        glog("    Usage: wdstream start [-wifi] [-ble] [-i <ms>] [-ch auto|1|1,6,11]\n");
+        glog("           wdstream stop | wdstream status\n\n");
         glog("connect\n");
         glog("    Description: Connect to a specific WiFi network and save credentials.\n");
         glog("    Usage: connect <SSID> [Password]\n\n");
@@ -239,17 +225,16 @@ void handle_help(int argc, char **argv) {
         glog("    Arguments:\n");
         glog("        <CC> : Country code (\"01\" world-safe) or two-letter ISO (e.g., US)\n\n");
 #endif
-        glog("See also: 'wpa3check' (help wpa3check), 'pineap' (help pineap), 'sweep' (help sweep),\n");
-        glog("          'wdstream' (help wardriving).\n\n");
+        glog("See also: 'wpa3check' (help wpa3check), 'pineap' (help pineap), 'sweep' (help sweep).\n\n");
         return;
     }
 
     if (strcmp(category, "gps") == 0) {
-        glog("\nGPS Commands:\n\n");
+        glog("\nGPS & Wardriving Commands:\n\n");
         glog("gpsinfo\n    Show GPS info.\n    Usage: gpsinfo [-s]\n\n");
         glog("gpspin\n    Set GPS RX pin for external GPS module.\n    Usage: gpspin <pin>\n\n");
         glog("gpsbaud\n    Set GPS baud rate or auto-detect it.\n    Usage: gpsbaud <auto|0|4800|9600|19200|38400|57600|115200>\n\n");
-        glog("See also: help wardriving.\n\n");
+        glog("startwd\n    Start GPS wardriving.\n    Usage: startwd [-s] [--helper] [--channels <csv>] [--hop <ms>] [--weighted]\n\n");
         return;
     }
 
@@ -264,7 +249,6 @@ void handle_help(int argc, char **argv) {
         glog("wigle upload <filename>\n    Upload a specific CSV file.\n\n");
         glog("wigle upload all\n    Upload all pending queue files.\n\n");
         glog("wigle stats\n    Show account stats for current API key.\n\n");
-        glog("See also: help wardriving.\n\n");
         return;
     }
 
@@ -317,8 +301,7 @@ void handle_help(int argc, char **argv) {
     glog("  help aerialscan - Drone / Remote ID detection\n");
     glog("  help wpa3check  - AP security audit (WPA3 / PMF)\n");
     glog("  help wifi       - Wi-Fi scan & analyze commands\n");
-    glog("  help wardriving - GPS-logged wardriving (WiFi + BLE)\n");
-    glog("  help gps        - GPS module setup\n");
+    glog("  help gps        - GPS & wardriving commands\n");
     glog("  help wigle      - WiGLE upload commands\n");
     glog("  help sd         - SD card commands\n");
 #ifdef CONFIG_HAS_INFRARED
