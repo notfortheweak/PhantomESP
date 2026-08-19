@@ -1059,12 +1059,6 @@ void fade_out_ready_cb(lv_anim_t *anim) {
         set_radius_recursive(new_view->root, 0);
       }
       if (status_bar) lv_obj_set_style_opa(status_bar, LV_OPA_COVER, 0);
-    } else if (new_view->name && strcmp(new_view->name, "Options Screen") == 0 && SelectedMenuType == OT_DualComm) {
-      if (new_view->root) {
-        lv_obj_set_style_opa(new_view->root, LV_OPA_COVER, 0);
-        set_radius_recursive(new_view->root, 0);
-      }
-      if (status_bar) lv_obj_set_style_opa(status_bar, LV_OPA_COVER, 0);
     } else {
       display_manager_fade_in(new_view->root);
       if (status_bar) {
@@ -3166,9 +3160,6 @@ void hardware_input_task(void *pvParameters) {
                         } else if (strcmp(cmd, "view:settings") == 0) {
                             SelectedMenuType = OT_Settings;
                             display_manager_switch_view(&options_menu_view);
-                        } else if (strcmp(cmd, "view:ghostlink") == 0) {
-                            SelectedMenuType = OT_DualComm;
-                            display_manager_switch_view(&options_menu_view);
                         }
                     } else {
                         display_manager_switch_view(&terminal_view);
@@ -3224,9 +3215,6 @@ void hardware_input_task(void *pvParameters) {
                         } else if (strcmp(cmd, "view:settings") == 0) {
                             SelectedMenuType = OT_Settings;
                             display_manager_switch_view(&options_menu_view);
-                        } else if (strcmp(cmd, "view:ghostlink") == 0) {
-                            SelectedMenuType = OT_DualComm;
-                            display_manager_switch_view(&options_menu_view);
                         }
                     } else {
                         display_manager_switch_view(&terminal_view);
@@ -3281,9 +3269,6 @@ void hardware_input_task(void *pvParameters) {
 #endif
                         } else if (strcmp(cmd, "view:settings") == 0) {
                             SelectedMenuType = OT_Settings;
-                            display_manager_switch_view(&options_menu_view);
-                        } else if (strcmp(cmd, "view:ghostlink") == 0) {
-                            SelectedMenuType = OT_DualComm;
                             display_manager_switch_view(&options_menu_view);
                         }
                     } else {

@@ -5,10 +5,10 @@
 #include "managers/display_manager.h"
 
 typedef enum {
+    OT_Detect,
     OT_Wifi,
     OT_Bluetooth,
     OT_GPS,
-    OT_DualComm,
     OT_NRF24,
     OT_SubGhz,
     OT_Settings,

@@ -59,7 +59,6 @@ uint32_t theme_palette_get_background(uint8_t theme);
 uint32_t theme_palette_get_surface(uint8_t theme);
 uint32_t theme_palette_get_text(uint8_t theme);
 
-LV_IMG_DECLARE(dualcomm);
 LV_IMG_DECLARE(nrf24);
 LV_IMG_DECLARE(subghz);
 LV_IMG_DECLARE(lock);
@@ -154,6 +153,7 @@ typedef struct {
 
 // Define colors as compile-time constants
 menu_item_t menu_items[] = {
+    {"Detect", "ghost", &ghost, 1, {{0}}}, // detection hub (top priority)
     {"WiFi", "wifi", &wifi, 1, {{0}}}, // applies to all boards
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     {"BLE", "bluetooth", &bluetooth, 0, {{0}}},
@@ -174,7 +174,6 @@ menu_item_t menu_items[] = {
 #if defined(CONFIG_HAS_BADUSB) || defined(CONFIG_HAS_BADUSB_REMOTE)
     {"BadUSB", "usb", &usb, 3, {{0}}},
 #endif
-    {"GhostLink", "dualcomm", &dualcomm, 1, {{0}}},
     {"Apps", "GESPAppGallery", &GESPAppGallery, 3, {{0}}}, // applies to all boards
     {"Lock", "lock", &lock, 5, {{0}}}, // Lock Device
     {"Settings", "settings_icon", &settings_icon, 5, {{0}}}, // applies to all boards
@@ -976,6 +975,7 @@ static void handle_menu_item_selection(int item_index) {
     } menu_action_t;
 
     static const menu_action_t menu_actions[] = {
+        {"Detect", OT_Detect, &options_menu_view},
 #ifndef CONFIG_IDF_TARGET_ESP32S2
         {"BLE", OT_Bluetooth, &options_menu_view},
 #endif
@@ -999,7 +999,6 @@ static void handle_menu_item_selection(int item_index) {
         {"Apps", 0, &apps_menu_view},
         {"Lock", 0, &lockscreen_view},
         {"Settings", OT_Settings, &options_menu_view},
-        {"GhostLink", OT_DualComm, &options_menu_view},
 #if defined(CONFIG_HAS_BADUSB) || defined(CONFIG_HAS_BADUSB_REMOTE)
         {"BadUSB", 0, &badusb_view},
 #endif
@@ -1016,7 +1015,9 @@ static void handle_menu_item_selection(int item_index) {
             ESP_LOGI(TAG, "%s selected\n", menu_actions[i].name);
             
             // Add status display messages for menu navigation
-            if (strcmp(menu_actions[i].name, "WiFi") == 0) {
+            if (strcmp(menu_actions[i].name, "Detect") == 0) {
+                status_display_show_status("Detect");
+            } else if (strcmp(menu_actions[i].name, "WiFi") == 0) {
                 status_display_show_status("WiFi Menu");
             } else if (strcmp(menu_actions[i].name, "BLE") == 0) {
                 status_display_show_status("BLE Menu");
@@ -1034,8 +1035,6 @@ static void handle_menu_item_selection(int item_index) {
                 status_display_show_status("Apps Menu");
             } else if (strcmp(menu_actions[i].name, "Settings") == 0) {
                 status_display_show_status("Settings");
-            } else if (strcmp(menu_actions[i].name, "GhostLink") == 0) {
-                status_display_show_status("GhostLink");
             } else if (strcmp(menu_actions[i].name, "BadUSB") == 0) {
                 status_display_show_status("BadUSB");
             } else if (strcmp(menu_actions[i].name, "Audio") == 0) {

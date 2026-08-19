@@ -58,7 +58,6 @@
 
 #define PORTAL_PAGE_SIZE 8    /* keep portal pages small to avoid LVGL stalls */
 #define WIGLE_CSV_PAGE_SIZE 8
-#define PCAP_CAPTURE_PAGE_SIZE 8
 
 static detail_view_t *sinkhole_detail_view = NULL;
 static void sinkhole_detail_back_cb(lv_event_t *e);
@@ -77,9 +76,6 @@ static const char **wigle_csv_options = NULL;
 static int wigle_csv_page_offset = 0;
 static bool wigle_csv_has_next_page = false;
 
-static char *pcap_capture_names = NULL;
-static const char **pcap_capture_options = NULL;
-static int pcap_capture_page_offset = 0;
 
 static char *blocklist_file_names = NULL;
 static const char **blocklist_file_options = NULL;
@@ -1238,7 +1234,6 @@ typedef enum {
     WIFI_MENU_SCAN_SELECT,
     WIFI_MENU_ENVIRONMENT,
     WIFI_MENU_NETWORK,
-    WIFI_MENU_CAPTURE,
     WIFI_MENU_EVIL_PORTAL,
     WIFI_MENU_CONNECTION,
     WIFI_MENU_MISC,
@@ -1255,7 +1250,6 @@ typedef enum {
     WIFI_MENU_DNS_SINKHOLE_DOWNLOAD,
     WIFI_MENU_DNS_SINKHOLE_FILE_PICK,
     WIFI_MENU_DNS_SINKHOLE_DETAILS,
-    WIFI_MENU_CAPTURE_BROWSER,
     WIFI_MENU_MDNS_LIST,
     WIFI_MENU_MDNS_DETAILS
 } WifiMenuState;
@@ -1287,15 +1281,6 @@ static bool nav_pop_wifi_detail_return(WifiMenuState *return_state_out) {
 }
 
 
-static const char * const wifi_capture_options[] = {
-    "Capture Probe", "Capture Deauth", "Capture Beacon", "Capture Raw", "Capture Eapol",
-    "Capture WPS", "Capture PWN",
-#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-    "Capture 802.15.4", "Capture 802.15.4 (Channel)",
-#endif
-    "Listen for Probes", "Export PCAP hc22000", NULL
-};
-
 static const char * const wifi_scan_select_options[] = {
     "Scan Access Points", "Scan APs Live", "Scan Stations", "Scan AP + STA",
     "List Access Points", "List Stations", "List AP + STA",
@@ -1304,7 +1289,7 @@ static const char * const wifi_scan_select_options[] = {
 
 static const char * const wifi_environment_options[] = {
     "Sweep", "Airspace Monitor", "PineAP Detection", "Channel Congestion",
-    "Packet Monitor", "Packet Visualizer", NULL
+    "Listen for Probes", "Packet Visualizer", NULL
 };
 
 static const char * const wifi_network_options[] = {
@@ -1322,8 +1307,16 @@ static void settings_activate_row(int row_index, bool increment);
 static const char * const wifi_connection_options[] = {"Connect to WiFi", "Connect to saved WiFi", "Reset AP Credentials", NULL};
 
 
+static const char * const detect_main_options[] = {
+    "Sweep", "Flock Detection", "PineAP Detection", "Aerial Detector",
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+    "Find Flippers", "Find AirTags",
+#endif
+    "WPA3 Compliance", NULL
+};
+
 static const char * const wifi_main_options[] = {
-    "Scan & Select", "Flock Detection", "Environment", "Network", "Capture", "Connection", NULL
+    "Scan & Select", "Flock Detection", "Environment", "Network", "Connection", NULL
 };
 
 static const char * const gps_options[] = {"Start Wardriving", "Stop Wardriving", "GPS Info",
@@ -1335,120 +1328,6 @@ static const char *nrf24_options[] = {"Frequency Analyzer", NULL};
 #if defined(CONFIG_HAS_SUBGHZ) || defined(CONFIG_HAS_SUBGHZ_REMOTE)
 static const char * const subghz_options[] = {"SubGHz", NULL};
 #endif
-
-// Dual Comm is split into a small state machine with submenus to avoid
-// one giant list that can starve LVGL.
-
-typedef enum {
-    DUALCOMM_MENU_MAIN = 0,
-    DUALCOMM_MENU_SESSION,
-    DUALCOMM_MENU_SCAN,
-    DUALCOMM_MENU_WIFI,
-    DUALCOMM_MENU_ATTACKS,
-    DUALCOMM_MENU_CAPTURE,
-    DUALCOMM_MENU_TOOLS,
-    DUALCOMM_MENU_BLE,
-    DUALCOMM_MENU_GPS,
-    DUALCOMM_MENU_KEYBOARD
-} DualCommMenuState;
-
-static DualCommMenuState current_dualcomm_menu_state = DUALCOMM_MENU_MAIN;
-
-static const char * const dual_comm_main_options[] = {
-    "Status",
-    "Discovery / Session",
-    "Scanning",
-    "WiFi",
-    "Capture",
-    "Tools",
-    "BLE",
-    "GPS",
-    "Keyboard",
-    NULL
-};
-
-static const char * const dual_comm_keyboard_options[] = {
-    "USB Host On",
-    "USB Host Off",
-    "USB Host Status",
-    NULL
-};
-
-static const char * const dual_comm_session_options[] = {
-    "Status",
-    "Start Discovery",
-    "Connect to Peer",
-    "Disconnect",
-    "Send Remote Command",
-    NULL
-};
-
-static const char * const dual_comm_scan_options[] = {
-    "Scan Access Points",
-    "Scan APs Live",
-    "Scan Stations",
-    "Scan AP + STA",
-    "Sweep",
-    "mDNS Discovery",
-    "PineAP Detection",
-    "Flock Detection",
-    "Channel Congestion",
-    "List Access Points",
-    "List Stations",
-    "Select AP",
-    "Select Station",
-    "Track AP",
-    "Track Station",
-    NULL
-};
-
-static const char * const dual_comm_wifi_options[] = {
-    "Connect to WiFi",
-    "Connect to saved WiFi",
-    "Reset AP Credentials",
-    "Set AP Credentials",
-    "Enable AP",
-    "Disable AP",
-    NULL
-};
-
-
-static const char * const dual_comm_capture_options[] = {
-    "Capture Deauth",
-    "Capture Probe",
-    "Capture Beacon",
-    "Capture Raw",
-    "Capture Eapol",
-    "Capture WPS",
-    "Capture PWN",
-    "Listen for Probes",
-    NULL
-};
-
-static const char * const dual_comm_tools_options[] = {
-    "Start Wardriving",
-    "Stop Wardriving",
-    "Toggle WebUI AP Only",
-    NULL
-};
-
-static const char * const dual_comm_ble_options[] = {
-    "BLE Bridge",
-    "Start AirTag Scanner",
-    "List AirTags",
-    "Select AirTag",
-    "Find Flippers",
-    "List Flippers",
-    "Select Flipper",
-    "Raw BLE Scanner",
-    NULL
-};
-
-static const char * const dual_comm_gps_options[] = {
-    "GPS Info",
-    "BLE Wardriving",
-    NULL
-};
 
 static void load_current_settings_values(void);
 
@@ -1877,14 +1756,10 @@ static int wigle_stats_popup_selected = 1;
 // --- Add Bluetooth submenu arrays and state ---
 static const char * const bluetooth_main_options[] = {
     "Detect Devices", "List Detected Devices", "Advertiser Scan", "OUI Device Scan", "List Advertisers",
-    "GATT Scan", "Aerial Detector", "Spam", "Raw", NULL
+    "GATT Scan", "Aerial Detector", "Raw", NULL
 };
 static const char * const bluetooth_oui_options[] = {
     "Enter OUI Prefix", "Search Vendors", NULL
-};
-static const char * const bluetooth_spam_options[] = {
-    "BLE Spam - Apple", "BLE Spam - Microsoft", "BLE Spam - Samsung",
-    "BLE Spam - Google", "BLE Spam - Random", "Stop BLE Spam", NULL
 };
 static const char * const bluetooth_raw_options[] = {
     "Raw BLE Scanner", NULL
@@ -1921,7 +1796,6 @@ typedef struct {
     lv_coord_t scroll_y;
     WifiMenuState wifi_state;
     BluetoothMenuState bluetooth_state;
-    DualCommMenuState dualcomm_state;
     int settings_root;
     int settings_category;
 } options_menu_nav_state_t;
@@ -1941,7 +1815,6 @@ static options_menu_nav_state_t options_menu_capture_nav_state(void) {
         .selected = selected_item_index,
         .wifi_state = current_wifi_menu_state,
         .bluetooth_state = current_bluetooth_menu_state,
-        .dualcomm_state = current_dualcomm_menu_state,
         .settings_root = current_settings_root,
         .settings_category = current_settings_category,
     };
@@ -1957,7 +1830,6 @@ static bool options_menu_nav_states_match(const options_menu_nav_state_t *a,
            a->menu_type == b->menu_type &&
            a->wifi_state == b->wifi_state &&
            a->bluetooth_state == b->bluetooth_state &&
-           a->dualcomm_state == b->dualcomm_state &&
            a->settings_root == b->settings_root &&
            a->settings_category == b->settings_category;
 }
@@ -1985,7 +1857,6 @@ static void options_menu_push_rendered_state(void) {
         .scroll_y = source.scroll_y,
         .wifi_state = source.wifi_state,
         .bluetooth_state = source.bluetooth_state,
-        .dualcomm_state = source.dualcomm_state,
         .settings_root = source.settings_root,
         .settings_category = source.settings_category,
     };
@@ -2002,7 +1873,6 @@ static bool options_menu_restore_previous_state(void) {
     SelectedMenuType = (EOptionsMenuType)nav.value;
     current_wifi_menu_state = (WifiMenuState)nav.wifi_state;
     current_bluetooth_menu_state = (BluetoothMenuState)nav.bluetooth_state;
-    current_dualcomm_menu_state = (DualCommMenuState)nav.dualcomm_state;
     current_settings_root = nav.settings_root;
     current_settings_category = nav.settings_category;
     settings_submenu_depth = current_settings_category >= 0 ? 2 :
@@ -2015,7 +1885,6 @@ static bool options_menu_restore_previous_state(void) {
         .scroll_y = nav.scroll_y,
         .wifi_state = current_wifi_menu_state,
         .bluetooth_state = current_bluetooth_menu_state,
-        .dualcomm_state = current_dualcomm_menu_state,
         .settings_root = current_settings_root,
         .settings_category = current_settings_category,
     };
@@ -2593,33 +2462,10 @@ static void wigle_test_result_cb(bool success, const char *message);
 static void wigle_manual_upload_result_cb(bool success, const char *message);
 static void wigle_stats_result_cb(bool success, const char *message);
 static void wifi_connect_kb_cb(const char *text);
-static void ssh_scan_kb_cb(const char *text);
-static void netbios_scan_kb_cb(const char *text);
-static void http_banner_kb_cb(const char *text);
-static void snmp_probe_kb_cb(const char *text);
-static void netbios_subnet_kb_cb(const char *text);
-static void http_banner_subnet_kb_cb(const char *text);
-static void snmp_probe_subnet_kb_cb(const char *text);
-static void enum_scan_kb_cb(const char *text);
-static void snmp_walk_kb_cb(const char *text);
-static void snmp_walk_subnet_kb_cb(const char *text);
-static void dual_comm_netbios_subnet_kb_cb(const char *text);
-static void dual_comm_http_banner_subnet_kb_cb(const char *text);
-static void dual_comm_snmp_probe_subnet_kb_cb(const char *text);
-static void dual_comm_connect_kb_cb(const char *text);
-static void dual_comm_send_kb_cb(const char *text);
-static void dual_comm_wifi_connect_kb_cb(const char *text);
-static void dual_comm_apcred_kb_cb(const char *text);
-static void dual_comm_karma_custom_ssids_cb(const char *text);
-static void dual_comm_dns_lookup_kb_cb(const char *text);
-static void dual_comm_traceroute_kb_cb(const char *text);
-static void dual_comm_http_request_kb_cb(const char *text);
 static void ble_oui_prefix_kb_cb(const char *text);
 static void ble_oui_vendor_search_kb_cb(const char *text);
 static void wigle_csv_free_cache(void);
 static const char **wigle_csv_load_page(void);
-static void pcap_capture_free_cache(void);
-static const char **pcap_capture_load_page(void);
 static void wigle_show_csv_details_popup(const char *filename);
 #ifdef CONFIG_USE_IO_EXPANDER
 static void iobtn_p10_kb_cb(const char *text);
@@ -2630,9 +2476,6 @@ static void ap_ssid_kb_cb(const char *text);
 static void ap_password_kb_cb(const char *text);
 static void sta_ssid_kb_cb(const char *text);
 static void sta_password_kb_cb(const char *text);
-#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-static void zigbee_capture_kb_cb(const char *text);
-#endif
 
 static void evil_portal_ssid_cb(const char *input) {
     if (!input || !selected_portal[0]) return;
@@ -2793,14 +2636,14 @@ static void touch_back_button_cb(lv_event_t *e) {
 
 const char *options_menu_type_to_string(EOptionsMenuType menuType) {
     switch (menuType) {
+    case OT_Detect:
+        return "Detect";
     case OT_Wifi:
         return "Wi-Fi";
     case OT_Bluetooth:
         return "BLE";
     case OT_GPS:
         return "GPS";
-    case OT_DualComm:
-        return "GhostLink";
     case OT_NRF24:
         return "NRF24";
     case OT_SubGhz:
@@ -2971,7 +2814,6 @@ void options_menu_create() {
                           s_resume_menu_state.menu_type == SelectedMenuType &&
                           s_resume_menu_state.wifi_state == current_wifi_menu_state &&
                           s_resume_menu_state.bluetooth_state == current_bluetooth_menu_state &&
-                          s_resume_menu_state.dualcomm_state == current_dualcomm_menu_state &&
                           s_resume_menu_state.settings_root == current_settings_root &&
                           s_resume_menu_state.settings_category == current_settings_category &&
                           display_manager_previous_view != &main_menu_view;
@@ -2982,7 +2824,6 @@ void options_menu_create() {
     if (restoring_view) {
         current_wifi_menu_state = s_resume_menu_state.wifi_state;
         current_bluetooth_menu_state = s_resume_menu_state.bluetooth_state;
-        current_dualcomm_menu_state = s_resume_menu_state.dualcomm_state;
         current_settings_root = s_resume_menu_state.settings_root;
         current_settings_category = s_resume_menu_state.settings_category;
         settings_submenu_depth = current_settings_category >= 0 ? 2 :
@@ -3033,13 +2874,15 @@ void options_menu_create() {
     const char * const *options = NULL;
     is_settings_mode = false;
     switch (SelectedMenuType) {
+    case OT_Detect:
+        options = detect_main_options;
+        break;
     case OT_Wifi:
         switch (current_wifi_menu_state) {
             case WIFI_MENU_MAIN: options = wifi_main_options; break;
             case WIFI_MENU_SCAN_SELECT: options = wifi_scan_select_options; break;
             case WIFI_MENU_ENVIRONMENT: options = wifi_environment_options; break;
             case WIFI_MENU_NETWORK: options = wifi_network_options; break;
-            case WIFI_MENU_CAPTURE: options = wifi_capture_options; break;
             case WIFI_MENU_DNS_SINKHOLE_FILE_PICK:
                 options = blocklist_file_options;
                 break;
@@ -3091,9 +2934,6 @@ void options_menu_create() {
             case WIFI_MENU_STA_MULTI_SELECT:
                 options = sta_multi_select_get_options();
                 break;
-            case WIFI_MENU_CAPTURE_BROWSER:
-                options = pcap_capture_load_page();
-                break;
             case WIFI_MENU_MDNS_LIST:
                 options = mdns_list_get_options();
                 break;
@@ -3140,7 +2980,7 @@ void options_menu_create() {
             case BLUETOOTH_MENU_GATT_DETAILS: options = NULL; break;
             case BLUETOOTH_MENU_OUI: options = bluetooth_oui_options; break;
             case BLUETOOTH_MENU_OUI_VENDOR_LIST: options = ble_oui_vendor_list_get_options(); break;
-            case BLUETOOTH_MENU_SPAM: options = bluetooth_spam_options; break;
+            case BLUETOOTH_MENU_SPAM: options = NULL; break;
             case BLUETOOTH_MENU_RAW: options = bluetooth_raw_options; break;
             case BLUETOOTH_MENU_GATT: options = bluetooth_gatt_options; break;
             case BLUETOOTH_MENU_AERIAL: options = bluetooth_aerial_options; break;
@@ -3160,20 +3000,6 @@ void options_menu_create() {
 #else
         options = NULL;
 #endif
-        break;
-    case OT_DualComm:
-        switch (current_dualcomm_menu_state) {
-            case DUALCOMM_MENU_MAIN:     options = dual_comm_main_options; break;
-            case DUALCOMM_MENU_SESSION:  options = dual_comm_session_options; break;
-            case DUALCOMM_MENU_SCAN:     options = dual_comm_scan_options; break;
-            case DUALCOMM_MENU_WIFI:     options = dual_comm_wifi_options; break;
-            case DUALCOMM_MENU_CAPTURE:  options = dual_comm_capture_options; break;
-            case DUALCOMM_MENU_TOOLS:    options = dual_comm_tools_options; break;
-            case DUALCOMM_MENU_BLE:      options = dual_comm_ble_options; break;
-            case DUALCOMM_MENU_GPS:      options = dual_comm_gps_options; break;
-            case DUALCOMM_MENU_KEYBOARD: options = dual_comm_keyboard_options; break;
-            case DUALCOMM_MENU_ATTACKS:  options = dual_comm_main_options; break; // torn down; fall back to main
-        }
         break;
     case OT_Settings:
         is_settings_mode = true;
@@ -4935,7 +4761,6 @@ void handle_hardware_button_press_options(InputEvent *event) {
                 current_wifi_menu_state == WIFI_MENU_AP_LIST ||
                 current_wifi_menu_state == WIFI_MENU_STA_LIST ||
                 current_wifi_menu_state == WIFI_MENU_SCANALL_LIST ||
-                current_wifi_menu_state == WIFI_MENU_CAPTURE_BROWSER ||
                 (SelectedMenuType == OT_Bluetooth &&
                  (current_bluetooth_menu_state == BLUETOOTH_MENU_DETECT_LIST ||
                   current_bluetooth_menu_state == BLUETOOTH_MENU_ADV_LIST ||
@@ -5845,563 +5670,6 @@ void option_event_cb(lv_event_t *e) {
 #endif
     }
 
-    if (SelectedMenuType == OT_DualComm) {
-        if (current_dualcomm_menu_state == DUALCOMM_MENU_MAIN) {
-            if (strcmp(Selected_Option, "Status") == 0) {
-                // Allow quick access to Status from main
-                terminal_set_return_view(&options_menu_view);
-                terminal_set_dualcomm_filter(true);
-                display_manager_switch_view(&terminal_view);
-                simulateCommand("commsend commstatus");
-                view_switched = true;
-            } else if (strcmp(Selected_Option, "Discovery / Session") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_SESSION;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "Scanning") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_SCAN;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "WiFi") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_WIFI;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "Attacks") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_ATTACKS;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "Capture") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_CAPTURE;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "Tools") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_TOOLS;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "BLE") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_BLE;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "GPS") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_GPS;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            } else if (strcmp(Selected_Option, "Keyboard") == 0) {
-                current_dualcomm_menu_state = DUALCOMM_MENU_KEYBOARD;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            }
-        }
-
-        if (strcmp(Selected_Option, "Status") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend commstatus");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Start Discovery") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend commdiscovery");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Connect to Peer") == 0) {
-            keyboard_view_set_submit_callback(dual_comm_connect_kb_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("Peer name (e.g. ESP_XXXXXX)");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Disconnect") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend commdisconnect");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Send Remote Command") == 0) {
-            keyboard_view_set_submit_callback(dual_comm_send_kb_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("Command to run on peer");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Scan Access Points") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scanap");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Scan APs Live") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scanap -live");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Scan Stations") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scansta");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Scan AP + STA") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scanall");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Sweep") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend sweep");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "mDNS Discovery") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scanlocal");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "ARP Scan Network") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scanarp");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Scan Open Ports") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scanports local -C");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Scan SSH") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend scanssh");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "NetBIOS Scan") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend netbiosscan");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "HTTP Banner Scan") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend httpbannerscan");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "SNMP Probe") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend snmpprobe");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Scan SSH Host...") == 0) {
-            keyboard_view_set_return_view(&options_menu_view);
-            keyboard_view_set_submit_callback(ssh_scan_kb_cb);
-            keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-            keyboard_view_set_initial_text("");
-            display_manager_switch_view(&keyboard_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "NetBIOS Scan Host...") == 0) {
-            keyboard_view_set_return_view(&options_menu_view);
-            keyboard_view_set_submit_callback(netbios_scan_kb_cb);
-            keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-            keyboard_view_set_initial_text("");
-            display_manager_switch_view(&keyboard_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "HTTP Banner Host...") == 0) {
-            keyboard_view_set_return_view(&options_menu_view);
-            keyboard_view_set_submit_callback(http_banner_kb_cb);
-            keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-            keyboard_view_set_initial_text("");
-            display_manager_switch_view(&keyboard_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "SNMP Probe Host...") == 0) {
-            keyboard_view_set_return_view(&options_menu_view);
-            keyboard_view_set_submit_callback(snmp_probe_kb_cb);
-            keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-            keyboard_view_set_initial_text("");
-            display_manager_switch_view(&keyboard_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "NetBIOS Subnet...") == 0) {
-            keyboard_view_set_return_view(&options_menu_view);
-            keyboard_view_set_submit_callback(dual_comm_netbios_subnet_kb_cb);
-            keyboard_view_set_placeholder("Subnet prefix (e.g. 192.168.4.)");
-            keyboard_view_set_initial_text("");
-            display_manager_switch_view(&keyboard_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "HTTP Banner Subnet...") == 0) {
-            keyboard_view_set_return_view(&options_menu_view);
-            keyboard_view_set_submit_callback(dual_comm_http_banner_subnet_kb_cb);
-            keyboard_view_set_placeholder("Subnet prefix (e.g. 192.168.4.)");
-            keyboard_view_set_initial_text("");
-            display_manager_switch_view(&keyboard_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "SNMP Probe Subnet...") == 0) {
-            keyboard_view_set_return_view(&options_menu_view);
-            keyboard_view_set_submit_callback(dual_comm_snmp_probe_subnet_kb_cb);
-            keyboard_view_set_placeholder("Subnet prefix (e.g. 192.168.4.)");
-            keyboard_view_set_initial_text("");
-            display_manager_switch_view(&keyboard_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "PineAP Detection") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend pineap");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Flock Detection") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend flockscan");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Channel Congestion") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend congestion");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "List Access Points") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend list -a");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "List Stations") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend list -s");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Select Station") == 0) {
-            set_number_pad_mode(NP_MODE_STA_REMOTE);
-            display_manager_switch_view(&number_pad_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Select AP") == 0) {
-            set_number_pad_mode(NP_MODE_AP_REMOTE);
-            display_manager_switch_view(&number_pad_view);
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Track AP") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend trackap");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Track Station") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend tracksta");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Connect to WiFi") == 0) {
-            keyboard_view_set_submit_callback(dual_comm_wifi_connect_kb_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("\"SSID\" \"PASSWORD\"");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Connect to saved WiFi") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend connect");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Reset AP Credentials") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend apcred -r");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Set AP Credentials") == 0) {
-            keyboard_view_set_submit_callback(dual_comm_apcred_kb_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("\"SSID\" \"PASSWORD\"");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Enable AP") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend apenable on");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Disable AP") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend apenable off");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Capture Deauth") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend capture -deauth");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Capture Probe") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend capture -probe");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Capture Beacon") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend capture -beacon");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Capture Raw") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend capture -raw");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Capture Eapol") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend capture -eapol");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Capture WPS") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend capture -wps");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Capture PWN") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend capture -pwn");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Listen for Probes") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend listenprobes");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Start Wardriving") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend startwd");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Stop Wardriving") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend startwd -s");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Toggle WebUI AP Only") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend webuiap");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "BLE Bridge") == 0) {
-            error_popup_create("BLE Bridge has been removed.");
-        } else if (strcmp(Selected_Option, "Start AirTag Scanner") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blescan -a");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "List AirTags") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend listairtags");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "Select AirTag") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            set_number_pad_mode(NP_MODE_AIRTAG_REMOTE);
-            display_manager_switch_view(&number_pad_view);
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "Find Flippers") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blescan -f");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "List Flippers") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend listflippers");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "Select Flipper") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            set_number_pad_mode(NP_MODE_FLIPPER_REMOTE);
-            display_manager_switch_view(&number_pad_view);
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "Raw BLE Scanner") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blescan -r");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "BLE Skimmer Detect") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend capture -skimmer");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "GPS Info") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend gpsinfo");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "BLE Wardriving") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-            terminal_set_return_view(&options_menu_view);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend blewardriving");
-            view_switched = true;
-#else
-            error_popup_create("Device Does not Support Bluetooth...");
-#endif
-        } else if (strcmp(Selected_Option, "Initialise") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethup");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Deinitialise") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethdown");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Ethernet Info") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethinfo");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Fingerprint Scan") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethfp");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "ARP Scan") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend etharp");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Port Scan Local") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethports local");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Port Scan All") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethports local all");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Ping Scan") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethping");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "DNS Lookup") == 0) {
-            keyboard_view_set_submit_callback(dual_comm_dns_lookup_kb_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("Hostname (e.g. google.com)");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Traceroute") == 0) {
-            keyboard_view_set_submit_callback(dual_comm_traceroute_kb_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("Hostname or IP (e.g. 8.8.8.8)");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "HTTP Request") == 0) {
-            keyboard_view_set_submit_callback(dual_comm_http_request_kb_cb);
-            display_manager_switch_view(&keyboard_view);
-            keyboard_view_set_placeholder("URL (e.g. http://example.com or https://www.google.com)");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Sync NTP Time") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethntp");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Network Stats") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethstats");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "Show Config") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethconfig show");
-        } else if (strcmp(Selected_Option, "ARP Poison") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            terminal_set_dualcomm_filter(true);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend ethpoison start");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "USB Host On") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend usbkbd on");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "USB Host Off") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend usbkbd off");
-            view_switched = true;
-        } else if (strcmp(Selected_Option, "USB Host Status") == 0) {
-            terminal_set_return_view(&options_menu_view);
-            display_manager_switch_view(&terminal_view);
-            simulateCommand("commsend usbkbd status");
-            view_switched = true;
-        }
-
-        if (!view_switched) {
-            option_invoked = false;
-        }
-        return;
-    }
-
 #if defined(CONFIG_HAS_NRF24) || defined(CONFIG_HAS_NRF24_REMOTE)
     if (SelectedMenuType == OT_NRF24) {
         if (strcmp(Selected_Option, "Frequency Analyzer") == 0) {
@@ -6442,73 +5710,12 @@ void option_event_cb(lv_event_t *e) {
             if (strcmp(Selected_Option, "Scan & Select") == 0) current_wifi_menu_state = WIFI_MENU_SCAN_SELECT;
             else if (strcmp(Selected_Option, "Environment") == 0) current_wifi_menu_state = WIFI_MENU_ENVIRONMENT;
             else if (strcmp(Selected_Option, "Network") == 0) current_wifi_menu_state = WIFI_MENU_NETWORK;
-            else if (strcmp(Selected_Option, "Capture") == 0) current_wifi_menu_state = WIFI_MENU_CAPTURE;
             else if (strcmp(Selected_Option, "Connection") == 0) current_wifi_menu_state = WIFI_MENU_CONNECTION;
             rebuild_current_menu();
             option_invoked = false;
             return;
         }
 
-        if (current_wifi_menu_state == WIFI_MENU_CAPTURE &&
-            strcmp(Selected_Option, "Export PCAP hc22000") == 0) {
-            pcap_capture_page_offset = 0;
-            current_wifi_menu_state = WIFI_MENU_CAPTURE_BROWSER;
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-
-        if (current_wifi_menu_state == WIFI_MENU_CAPTURE_BROWSER) {
-            if (strcmp(Selected_Option, "No PCAP files found") == 0) {
-                option_invoked = false;
-                return;
-            }
-            if (strcmp(Selected_Option, "Next >") == 0) {
-                pcap_capture_page_offset += PCAP_CAPTURE_PAGE_SIZE;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            }
-            if (strcmp(Selected_Option, "< Prev") == 0) {
-                pcap_capture_page_offset -= PCAP_CAPTURE_PAGE_SIZE;
-                if (pcap_capture_page_offset < 0) pcap_capture_page_offset = 0;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-            }
-
-            const char *file_name = strchr(Selected_Option, ' ');
-            file_name = file_name ? file_name + 1 : Selected_Option;
-
-            bool jit_mounted = false;
-            bool display_suspended = false;
-#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
-            if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething") == 0) {
-                if (!sd_card_manager.is_initialized) {
-                    if (sd_card_mount_for_flush(&display_suspended) == ESP_OK) {
-                        jit_mounted = true;
-                    }
-                }
-            }
-#endif
-            char out_path[MAX_FILE_NAME_LENGTH];
-            int pmkid = 0;
-            int handshakes = 0;
-            esp_err_t err = pcap_export_hc22000(file_name, out_path, sizeof(out_path), &pmkid, &handshakes);
-            if (jit_mounted) sd_card_unmount_after_flush(display_suspended);
-
-            if (err == ESP_OK) {
-                char msg[128];
-                snprintf(msg, sizeof(msg), "Exported: PMKID %d, M2/M3 %d", pmkid, handshakes);
-                toast_show_duration(msg, TOAST_SUCCESS, 2500);
-            } else if (err == ESP_ERR_NOT_FOUND) {
-                toast_show_duration("No handshake found", TOAST_WARN, 2000);
-            } else {
-                toast_show_duration("Export failed", TOAST_ERROR, 2000);
-            }
-            option_invoked = false;
-            return;
-        }
     }
 
     // --- Bluetooth submenu navigation ---
@@ -6598,7 +5805,6 @@ void option_event_cb(lv_event_t *e) {
 #endif
             }
             else if (strcmp(Selected_Option, "Aerial Detector") == 0) current_bluetooth_menu_state = BLUETOOTH_MENU_AERIAL;
-            else if (strcmp(Selected_Option, "Spam") == 0) current_bluetooth_menu_state = BLUETOOTH_MENU_SPAM;
             else if (strcmp(Selected_Option, "Raw") == 0) current_bluetooth_menu_state = BLUETOOTH_MENU_RAW;
             rebuild_current_menu();
             option_invoked = false;
@@ -7098,55 +6304,12 @@ void option_event_cb(lv_event_t *e) {
         return;
     }
 
-    else if (strcmp(Selected_Option, "Capture Deauth") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("capture -deauth");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Capture Probe") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("capture -probe");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Capture Beacon") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("capture -beacon");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Capture Raw") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("capture -raw");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Capture Eapol") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-
-        simulateCommand("capture -eapol");
-        view_switched = true;
-    }
 
 #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-    else if (strcmp(Selected_Option, "Capture 802.15.4") == 0) {
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-        simulateCommand("capture -802154");
-        view_switched = true;
-    }
-    else if (strcmp(Selected_Option, "Capture 802.15.4 (Channel)") == 0) {
-        keyboard_view_set_submit_callback(zigbee_capture_kb_cb);
-        display_manager_switch_view(&keyboard_view);
-        keyboard_view_set_placeholder("Channel 11-26");
-        return;
-    }
 #endif
 
     else if (strcmp(Selected_Option, "Listen for Probes") == 0) {
@@ -7156,12 +6319,6 @@ void option_event_cb(lv_event_t *e) {
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "Capture WPS") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("capture -wps");
-        view_switched = true;
-    }
 
 
 
@@ -7280,12 +6437,25 @@ void option_event_cb(lv_event_t *e) {
 #endif
     }
 
-    else if (strcmp(Selected_Option, "Capture PWN") == 0) {
+    else if (strcmp(Selected_Option, "Find AirTags") == 0) {
+#ifndef CONFIG_IDF_TARGET_ESP32S2
         terminal_set_return_view(&options_menu_view);
         display_manager_switch_view(&terminal_view);
-        simulateCommand("capture -pwn");
+        simulateCommand("blescan -a");
         view_switched = true;
+#else
+        error_popup_create("Device Does not Support Bluetooth...");
+#endif
     }
+
+    else if (strcmp(Selected_Option, "Aerial Detector") == 0) {
+        SelectedMenuType = OT_Bluetooth;
+        current_bluetooth_menu_state = BLUETOOTH_MENU_AERIAL;
+        rebuild_current_menu();
+        option_invoked = false;
+        return;
+    }
+
 
 
     else if (strcmp(Selected_Option, "Raw BLE Scanner") == 0) {
@@ -7300,17 +6470,6 @@ void option_event_cb(lv_event_t *e) {
 #endif
     }
 
-    else if (strcmp(Selected_Option, "BLE Skimmer Detect") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("capture -skimmer");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-        
-#endif
-    }
 
     else if (strcmp(Selected_Option, "Start GATT Scan") == 0) {
 #ifndef CONFIG_IDF_TARGET_ESP32S2
@@ -7429,149 +6588,27 @@ void option_event_cb(lv_event_t *e) {
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "Scan Open Ports") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("scanports local -C");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Scan SSH") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("scanssh");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "NetBIOS Scan") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("netbiosscan");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "HTTP Banner Scan") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("httpbannerscan");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "SNMP Probe") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("snmpprobe");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "SNMP Walk") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("snmpprobe walk");
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Packet Monitor") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("scanarp monitor");
-        view_switched = true;
-    }
 
     else if (strcmp(Selected_Option, "Packet Visualizer") == 0) {
         display_manager_switch_view(&packet_monitor_view);
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "Scan SSH Host...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(ssh_scan_kb_cb);
-        keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "NetBIOS Scan Host...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(netbios_scan_kb_cb);
-        keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "HTTP Banner Host...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(http_banner_kb_cb);
-        keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "SNMP Probe Host...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(snmp_probe_kb_cb);
-        keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "Enum Scan Host...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(enum_scan_kb_cb);
-        keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "SNMP Walk Host...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(snmp_walk_kb_cb);
-        keyboard_view_set_placeholder("IP address (e.g. 192.168.1.1)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "NetBIOS Subnet...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(netbios_subnet_kb_cb);
-        keyboard_view_set_placeholder("Subnet prefix (e.g. 192.168.4.)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "HTTP Banner Subnet...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(http_banner_subnet_kb_cb);
-        keyboard_view_set_placeholder("Subnet prefix (e.g. 192.168.4.)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "SNMP Probe Subnet...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(snmp_probe_subnet_kb_cb);
-        keyboard_view_set_placeholder("Subnet prefix (e.g. 192.168.4.)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
-    else if (strcmp(Selected_Option, "SNMP Walk Subnet...") == 0) {
-        keyboard_view_set_return_view(&options_menu_view);
-        keyboard_view_set_submit_callback(snmp_walk_subnet_kb_cb);
-        keyboard_view_set_placeholder("Subnet prefix (e.g. 192.168.4.)");
-        keyboard_view_set_initial_text("");
-        display_manager_switch_view(&keyboard_view);
-        view_switched = true;
-    }
 
     else if (strcmp(Selected_Option, "Reset AP Credentials") == 0) {
         terminal_set_return_view(&options_menu_view);
@@ -7601,71 +6638,11 @@ void option_event_cb(lv_event_t *e) {
         view_switched = true;
     }
 
-    else if (strcmp(Selected_Option, "BLE Spam - Apple") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("blespam -apple");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-#endif
-    }
 
-    else if (strcmp(Selected_Option, "BLE Spam - Microsoft") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("blespam -ms");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-#endif
-    }
 
-    else if (strcmp(Selected_Option, "BLE Spam - Samsung") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("blespam -samsung");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-#endif
-    }
 
-    else if (strcmp(Selected_Option, "BLE Spam - Google") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("blespam -google");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-#endif
-    }
 
-    else if (strcmp(Selected_Option, "BLE Spam - Random") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("blespam -random");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-#endif
-    }
 
-    else if (strcmp(Selected_Option, "Stop BLE Spam") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("blespam -s");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-#endif
-    }
 
     else {
         ESP_LOGW(TAG, "Unhandled Option selected: %s\n", Selected_Option);
@@ -8050,17 +7027,6 @@ static void back_event_cb(lv_event_t *e) {
         rebuild_current_menu();
         return;
     }
-    // If in capture browser, go back to Capture menu
-    if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_CAPTURE_BROWSER) {
-        pcap_capture_page_offset = 0;
-        pcap_capture_free_cache();
-        if (options_menu_restore_previous_state()) {
-            return;
-        }
-        current_wifi_menu_state = WIFI_MENU_CAPTURE;
-        rebuild_current_menu();
-        return;
-    }
     // If in AP multi-select view, confirm selection and go back to Scan & Select menu
     if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_AP_MULTI_SELECT) {
         ap_multi_select_confirm();
@@ -8132,15 +7098,6 @@ static void back_event_cb(lv_event_t *e) {
             return;
         }
         current_bluetooth_menu_state = BLUETOOTH_MENU_MAIN;
-        rebuild_current_menu();
-        return;
-    }
-    // If in a Dual Comm submenu (but not main), go back to main Dual Comm menu
-    if (SelectedMenuType == OT_DualComm && current_dualcomm_menu_state != DUALCOMM_MENU_MAIN) {
-        if (options_menu_restore_previous_state()) {
-            return;
-        }
-        current_dualcomm_menu_state = DUALCOMM_MENU_MAIN;
         rebuild_current_menu();
         return;
     }
@@ -8239,123 +7196,6 @@ static const char **wigle_csv_load_page(void) {
     return wigle_csv_options;
 }
 
-static void pcap_capture_free_cache(void) {
-    if (pcap_capture_names) { free(pcap_capture_names); pcap_capture_names = NULL; }
-    if (pcap_capture_options) { free(pcap_capture_options); pcap_capture_options = NULL; }
-}
-
-static const char **pcap_capture_load_page(void) {
-    static const char *empty[] = {"No PCAP files found", NULL};
-
-    bool jit_mounted = false;
-    bool display_suspended = false;
-#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
-    if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething") == 0) {
-        if (!sd_card_manager.is_initialized) {
-            if (sd_card_mount_for_flush(&display_suspended) == ESP_OK) {
-                jit_mounted = true;
-            }
-        }
-    }
-#endif
-
-    pcap_capture_free_cache();
-
-    static const char *pcap_dirs[] = {
-        "/mnt/ghostesp/pcaps",
-    };
-#define PCAP_NDIRS (sizeof(pcap_dirs) / sizeof(pcap_dirs[0]))
-
-    int dir_counts[PCAP_NDIRS] = {0};
-    int total_files = 0;
-
-    for (int d = 0; d < (int)PCAP_NDIRS; d++) {
-        DIR *dir = opendir(pcap_dirs[d]);
-        if (!dir) continue;
-        struct dirent *entry;
-        while ((entry = readdir(dir)) != NULL) {
-            size_t len = strlen(entry->d_name);
-            if (len >= 6 && strcmp(entry->d_name + len - 5, ".pcap") == 0)
-                dir_counts[d]++;
-        }
-        closedir(dir);
-        total_files += dir_counts[d];
-    }
-
-    if (total_files == 0) {
-        if (jit_mounted) sd_card_unmount_after_flush(display_suspended);
-        return empty;
-    }
-
-    bool show_prev = (pcap_capture_page_offset > 0);
-    bool show_next = (pcap_capture_page_offset + PCAP_CAPTURE_PAGE_SIZE < total_files);
-    int page_count = total_files - pcap_capture_page_offset;
-    if (page_count > PCAP_CAPTURE_PAGE_SIZE) page_count = PCAP_CAPTURE_PAGE_SIZE;
-    if (page_count < 0) page_count = 0;
-    int total = (show_prev ? 1 : 0) + page_count + (show_next ? 1 : 0);
-
-    if (total == 0) {
-        if (jit_mounted) sd_card_unmount_after_flush(display_suspended);
-        return empty;
-    }
-
-    pcap_capture_names = malloc(MAX_FILE_NAME_LENGTH * (size_t)total);
-    pcap_capture_options = malloc(sizeof(char *) * ((size_t)total + 1));
-    if (!pcap_capture_names || !pcap_capture_options) {
-        pcap_capture_free_cache();
-        if (jit_mounted) sd_card_unmount_after_flush(display_suspended);
-        return empty;
-    }
-
-    int idx = 0;
-    if (show_prev) {
-        strcpy(pcap_capture_names + idx * MAX_FILE_NAME_LENGTH, "< Prev");
-        pcap_capture_options[idx] = pcap_capture_names + idx * MAX_FILE_NAME_LENGTH;
-        idx++;
-    }
-
-    int remaining = pcap_capture_page_offset;
-    int filled = 0;
-    for (int d = 0; d < (int)PCAP_NDIRS && filled < page_count; d++) {
-        if (dir_counts[d] == 0) continue;
-        if (remaining >= dir_counts[d]) {
-            remaining -= dir_counts[d];
-            continue;
-        }
-        char (*page_names)[MAX_PORTAL_NAME] = malloc(PCAP_CAPTURE_PAGE_SIZE * MAX_PORTAL_NAME);
-        if (!page_names) break;
-        int need = page_count - filled;
-        int offset_in_dir = remaining;
-        remaining = 0;
-        int got = sd_card_list_dir_paged(pcap_dirs[d], ".pcap",
-                                          offset_in_dir, need,
-                                          page_names, NULL);
-        if (got < 0) got = 0;
-        for (int i = 0; i < got && filled < page_count; i++) {
-            char full_path[MAX_FILE_NAME_LENGTH];
-            snprintf(full_path, sizeof(full_path), "%s/%s", pcap_dirs[d], page_names[i]);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-truncation"
-            snprintf(pcap_capture_names + idx * MAX_FILE_NAME_LENGTH, MAX_FILE_NAME_LENGTH,
-                     "%s %s", pcap_has_hc22000_material(full_path) ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE, full_path);
-#pragma GCC diagnostic pop
-            pcap_capture_options[idx] = pcap_capture_names + idx * MAX_FILE_NAME_LENGTH;
-            idx++;
-            filled++;
-        }
-        free(page_names);
-    }
-
-    if (show_next) {
-        strcpy(pcap_capture_names + idx * MAX_FILE_NAME_LENGTH, "Next >");
-        pcap_capture_options[idx] = pcap_capture_names + idx * MAX_FILE_NAME_LENGTH;
-        idx++;
-    }
-    pcap_capture_options[idx] = NULL;
-
-    if (jit_mounted) sd_card_unmount_after_flush(display_suspended);
-    return pcap_capture_options;
-}
 
 static int ap_list_load_fn(int offset, int page_size, char names[][PAGED_MENU_NAME_MAX], bool *has_more, void *user_data) {
     (void)user_data;
@@ -10035,40 +8875,6 @@ static const char *auth_mode_to_string(wifi_auth_mode_t mode) {
     }
 }
 
-static void ap_deauth_cb(lv_event_t *e) {
-    (void)e;
-    if (selected_ap_index >= 0) {
-        ap_scan_select(selected_ap_index);
-        wifi_manager_select_ap(selected_ap_index);
-        if (ap_detail_view) {
-            detail_view_destroy(ap_detail_view);
-            ap_detail_view = NULL;
-        }
-        current_wifi_menu_state = WIFI_MENU_AP_LIST;
-        suppress_wifi_state_reset_once = true;
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("attack -d");
-    }
-}
-
-static void ap_hs_deauth_cb(lv_event_t *e) {
-    (void)e;
-    if (selected_ap_index >= 0) {
-        ap_scan_select(selected_ap_index);
-        wifi_manager_select_ap(selected_ap_index);
-        if (ap_detail_view) {
-            detail_view_destroy(ap_detail_view);
-            ap_detail_view = NULL;
-        }
-        current_wifi_menu_state = WIFI_MENU_AP_LIST;
-        suppress_wifi_state_reset_once = true;
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("attack -hsd");
-    }
-}
-
 /* Sampler for the live RSSI ring: pulls the latest tracking RSSI from the wifi
  * manager. Returns true when the reading is fresh (a recent matching packet). */
 static bool track_meter_sample(void *user, int8_t *out_rssi) {
@@ -10389,8 +9195,6 @@ static void show_ap_detail(int ap_index) {
     if (!compact_detail) {
         detail_view_add_info(ap_detail_view, "Actions:", "");
     }
-    detail_view_add_action(ap_detail_view, "Deauth", ap_deauth_cb, NULL);
-    detail_view_add_action(ap_detail_view, "HS+Deauth", ap_hs_deauth_cb, NULL);
     detail_view_add_action(ap_detail_view, "Connect", ap_connect_cb, NULL);
     detail_view_add_action(ap_detail_view, "Track AP", ap_track_cb, NULL);
     detail_view_add_action(ap_detail_view, "Select AP", ap_select_cb, NULL);
@@ -10468,38 +9272,6 @@ static bool station_select_for_action(void) {
         return false;
     }
     return true;
-}
-
-static void station_deauth_cb(lv_event_t *e) {
-    (void)e;
-    if (!station_select_for_action()) {
-        return;
-    }
-    if (sta_detail_view) {
-        detail_view_destroy(sta_detail_view);
-        sta_detail_view = NULL;
-    }
-    current_wifi_menu_state = WIFI_MENU_STA_LIST;
-    suppress_wifi_state_reset_once = true;
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand("attack -d");
-}
-
-static void station_hs_deauth_cb(lv_event_t *e) {
-    (void)e;
-    if (!station_select_for_action()) {
-        return;
-    }
-    if (sta_detail_view) {
-        detail_view_destroy(sta_detail_view);
-        sta_detail_view = NULL;
-    }
-    current_wifi_menu_state = WIFI_MENU_STA_LIST;
-    suppress_wifi_state_reset_once = true;
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand("attack -hsd");
 }
 
 static void station_track_cb(lv_event_t *e) {
@@ -10590,8 +9362,6 @@ static void show_station_detail(int station_index) {
         detail_view_add_info(sta_detail_view, "AP Vendor", ap_vendor);
         detail_view_add_info(sta_detail_view, "Actions:", "");
     }
-    detail_view_add_action(sta_detail_view, "Deauth", station_deauth_cb, NULL);
-    detail_view_add_action(sta_detail_view, "HS+Deauth", station_hs_deauth_cb, NULL);
     detail_view_add_action(sta_detail_view, "Track Station", station_track_cb, NULL);
     detail_view_add_action(sta_detail_view, "Select Station", station_select_cb, NULL);
     detail_view_add_back(sta_detail_view, station_detail_back_cb, NULL);
@@ -11070,13 +9840,15 @@ static void rebuild_current_menu(void) {
         timer_period = current_settings_category < 0 ? 20 : 15;
     } else {
         switch (SelectedMenuType) {
+        case OT_Detect:
+            options = detect_main_options;
+            break;
         case OT_Wifi:
             switch (current_wifi_menu_state) {
                 case WIFI_MENU_MAIN: options = wifi_main_options; break;
                 case WIFI_MENU_SCAN_SELECT: options = wifi_scan_select_options; break;
                 case WIFI_MENU_ENVIRONMENT: options = wifi_environment_options; break;
                 case WIFI_MENU_NETWORK: options = wifi_network_options; break;
-                case WIFI_MENU_CAPTURE: options = wifi_capture_options; break;
                 case WIFI_MENU_DNS_SINKHOLE_FILE_PICK:
                     options = blocklist_file_options;
                     break;
@@ -11156,10 +9928,6 @@ static void rebuild_current_menu(void) {
                     options = sta_multi_select_get_options();
                     timer_period = 25;
                     break;
-                case WIFI_MENU_CAPTURE_BROWSER:
-                    options = pcap_capture_load_page();
-                    timer_period = 25;
-                    break;
                 case WIFI_MENU_MDNS_LIST:
                     options = mdns_list_get_options();
                     timer_period = 25;
@@ -11213,7 +9981,7 @@ static void rebuild_current_menu(void) {
                     options = ble_oui_vendor_list_get_options();
                     timer_period = 25;
                     break;
-                case BLUETOOTH_MENU_SPAM: options = bluetooth_spam_options; break;
+                case BLUETOOTH_MENU_SPAM: options = NULL; break;
                 case BLUETOOTH_MENU_RAW: options = bluetooth_raw_options; break;
                 case BLUETOOTH_MENU_GATT: options = bluetooth_gatt_options; break;
                 case BLUETOOTH_MENU_AERIAL: options = bluetooth_aerial_options; break;
@@ -11233,20 +10001,6 @@ static void rebuild_current_menu(void) {
 #else
             options = NULL;
 #endif
-            break;
-        case OT_DualComm:
-            switch (current_dualcomm_menu_state) {
-                case DUALCOMM_MENU_MAIN:     options = dual_comm_main_options; break;
-                case DUALCOMM_MENU_SESSION:  options = dual_comm_session_options; break;
-                case DUALCOMM_MENU_SCAN:     options = dual_comm_scan_options; break;
-                case DUALCOMM_MENU_WIFI:     options = dual_comm_wifi_options; break;
-                case DUALCOMM_MENU_CAPTURE:  options = dual_comm_capture_options; break;
-                case DUALCOMM_MENU_TOOLS:    options = dual_comm_tools_options; break;
-                case DUALCOMM_MENU_BLE:      options = dual_comm_ble_options; break;
-                case DUALCOMM_MENU_GPS:      options = dual_comm_gps_options; break;
-                case DUALCOMM_MENU_KEYBOARD: options = dual_comm_keyboard_options; break;
-                case DUALCOMM_MENU_ATTACKS:  options = dual_comm_main_options; break; // torn down; fall back to main
-            }
             break;
         case OT_IOButtonPresets:
             is_settings_mode = false;
@@ -11475,263 +10229,6 @@ static void sta_password_kb_cb(const char *text) {
     display_manager_switch_view(&options_menu_view);
 }
 
-static void ssh_scan_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a valid IP address");
-        return;
-    }
-    
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "scanssh %s", text);
-    
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void netbios_scan_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a valid IP address");
-        return;
-    }
-    
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "netbiosscan %s", text);
-    
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void http_banner_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a valid IP address");
-        return;
-    }
-    
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "httpbannerscan %s", text);
-    
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void snmp_probe_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a valid IP address");
-        return;
-    }
-    
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "snmpprobe %s", text);
-    
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void netbios_subnet_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a subnet prefix");
-        return;
-    }
-
-    char cmd[96];
-    snprintf(cmd, sizeof(cmd), "netbiosscan subnet %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void http_banner_subnet_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a subnet prefix");
-        return;
-    }
-
-    char cmd[96];
-    snprintf(cmd, sizeof(cmd), "httpbannerscan subnet %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void snmp_probe_subnet_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a subnet prefix");
-        return;
-    }
-
-    char cmd[96];
-    snprintf(cmd, sizeof(cmd), "snmpprobe subnet %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void enum_scan_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a valid IP address");
-        return;
-    }
-
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "enumscan %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void snmp_walk_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a valid IP address");
-        return;
-    }
-
-    char cmd[96];
-    snprintf(cmd, sizeof(cmd), "snmpprobe walk %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void snmp_walk_subnet_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a subnet prefix");
-        return;
-    }
-
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "snmpprobe walk subnet %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_netbios_subnet_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a subnet prefix");
-        return;
-    }
-
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "commsend netbiosscan subnet %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_http_banner_subnet_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a subnet prefix");
-        return;
-    }
-
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "commsend httpbannerscan subnet %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_snmp_probe_subnet_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a subnet prefix");
-        return;
-    }
-
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "commsend snmpprobe subnet %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_connect_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Enter peer name");
-        return;
-    }
-
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "commsend commconnect %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_send_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Enter command to send");
-        return;
-    }
-
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "commsend %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
-static void zigbee_capture_kb_cb(const char *text) {
-    if (!text) {
-        error_popup_create("Enter channel 11-26");
-        return;
-    }
-    const char *p = text;
-    while (*p == ' ' || *p == '\t') p++;
-    if ((p[0] == 'c' || p[0] == 'C') && (p[1] == 'h' || p[1] == 'H')) {
-        p += 2;
-    }
-    while (*p == ' ' || *p == '\t') p++;
-    char *endptr = NULL;
-    long ch = strtol(p, &endptr, 10);
-    while (endptr && (*endptr == ' ' || *endptr == '\t')) endptr++;
-    if (p[0] == '\0' || (endptr && *endptr != '\0') || ch < 11 || ch > 26) {
-        error_popup_create("Channel must be 11-26");
-        return;
-    }
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "capture -802154 ch%ld", ch);
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-#endif
 
 
 static void wifi_connect_kb_cb(const char *text){
@@ -11757,110 +10254,6 @@ static void wifi_connect_kb_cb(const char *text){
     simulateCommand(cmd);
     keyboard_view_set_submit_callback(NULL);
 }
-
-static void dual_comm_wifi_connect_kb_cb(const char *text) {
-    const char *p = text;
-    while (*p && *p != '"') p++;
-    if (!*p) { error_popup_create("format: \"SSID\" \"PASSWORD\""); return; }
-    p++; const char *start = p;
-    while (*p && *p != '"') p++;
-    if (!*p) { error_popup_create("format: \"SSID\" \"PASSWORD\""); return; }
-    size_t len = p - start; if (len == 0 || len >= 64) { error_popup_create("ssid too long"); return; }
-    char ssid[64] = {0}; memcpy(ssid, start, len); ssid[len] = '\0';
-    p++; while (*p == ' ') { p++; }
-    char pass[64] = {0};
-    if (*p == '"') {
-        p++; start = p; while (*p && *p != '"') p++; if (!*p) { error_popup_create("format: \"SSID\" \"PASSWORD\""); return; }
-        len = p - start; if (len >= 64) { error_popup_create("pass too long"); return; }
-        memcpy(pass, start, len); pass[len] = '\0';
-    }
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "commsend connect \"%s\" \"%s\"", ssid, pass);
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_karma_custom_ssids_cb(const char *input) {
-    if (!input || strlen(input) == 0) {
-        error_popup_create("Please enter at least one SSID.");
-        return;
-    }
-
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "commsend karma start %s", input);
-
-    terminal_set_return_view(&options_menu_view);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_apcred_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter AP credentials");
-        return;
-    }
-
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "commsend apcred %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_dns_lookup_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Enter a hostname (e.g., example.com)");
-        return;
-    }
-
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "commsend ethdns %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_traceroute_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a hostname or IP address");
-        return;
-    }
-
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "commsend ethtrace %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
-static void dual_comm_http_request_kb_cb(const char *text) {
-    if (!text || strlen(text) == 0) {
-        error_popup_create("Please enter a URL");
-        return;
-    }
-
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "commsend ethhttp %s", text);
-
-    terminal_set_return_view(&options_menu_view);
-    terminal_set_dualcomm_filter(true);
-    display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-}
-
 
 /* item font/centering/styling handled inside options_view */
 
@@ -12053,10 +10446,6 @@ static void menu_builder_cb(lv_timer_t *t)
                 }
                 lv_obj_set_height(btn, row_height);
                 options_view_relayout_item(g_options_view, btn);
-                if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_CAPTURE_BROWSER) {
-                    lv_obj_t *lbl = lv_obj_get_child(btn, 0);
-                    if (lbl) lv_label_set_long_mode(lbl, LV_LABEL_LONG_SCROLL);
-                }
                 style_multi_select_row(btn, multi_select_option_is_toggled(build_item_index, opt));
                 num_items++;
                 built_this_tick++;
