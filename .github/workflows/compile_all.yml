@@ -71,6 +71,10 @@ jobs:
             git clone -b v6.0 --depth 1 --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
           fi
           if [ ! -x ~/.espressif/python_env/idf6.0_py3.10_env/bin/python ]; then
+            # A restored (partial) cache can leave a half-built venv dir, which
+            # makes `python3 -m venv` fail with a missing bin/python3. Wipe just
+            # the venv (keep the already-installed toolchains) and rebuild clean.
+            rm -rf ~/.espressif/python_env
             ~/esp-idf/install.sh
           fi
 
