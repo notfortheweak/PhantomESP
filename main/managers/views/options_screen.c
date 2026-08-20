@@ -1284,11 +1284,11 @@ static bool nav_pop_wifi_detail_return(WifiMenuState *return_state_out) {
 static const char * const wifi_scan_select_options[] = {
     "Scan Access Points", "Scan APs Live", "Scan Stations", "Scan AP + STA",
     "List Access Points", "List Stations", "List AP + STA",
-    "Multi-Select APs", "Multi-Select Stations", "WPA3 Compliance", NULL
+    "Multi-Select APs", "Multi-Select Stations", NULL
 };
 
 static const char * const wifi_environment_options[] = {
-    "Sweep", "Airspace Monitor", "PineAP Detection", "Channel Congestion",
+    "Airspace Monitor", "Channel Congestion",
     "Listen for Probes", "Packet Visualizer", NULL
 };
 
@@ -1316,7 +1316,7 @@ static const char * const detect_main_options[] = {
 };
 
 static const char * const wifi_main_options[] = {
-    "Scan & Select", "Flock Detection", "Environment", "Network", "Connection", NULL
+    "Scan & Select", "Environment", "Network", "Connection", NULL
 };
 
 static const char * const gps_options[] = {"Start Wardriving", "Stop Wardriving", "GPS Info",
@@ -1756,7 +1756,7 @@ static int wigle_stats_popup_selected = 1;
 // --- Add Bluetooth submenu arrays and state ---
 static const char * const bluetooth_main_options[] = {
     "Detect Devices", "List Detected Devices", "Advertiser Scan", "OUI Device Scan", "List Advertisers",
-    "GATT Scan", "Aerial Detector", "Raw", NULL
+    "GATT Scan", "Raw", NULL
 };
 static const char * const bluetooth_oui_options[] = {
     "Enter OUI Prefix", "Search Vendors", NULL
@@ -5700,13 +5700,6 @@ void option_event_cb(lv_event_t *e) {
 
     if (SelectedMenuType == OT_Wifi) {
         if (current_wifi_menu_state == WIFI_MENU_MAIN) {
-            if (strcmp(Selected_Option, "Flock Detection") == 0) {
-                terminal_set_return_view(&options_menu_view);
-                display_manager_switch_view(&terminal_view);
-                simulateCommand("flockscan");
-                option_invoked = false;
-                return;
-            }
             if (strcmp(Selected_Option, "Scan & Select") == 0) current_wifi_menu_state = WIFI_MENU_SCAN_SELECT;
             else if (strcmp(Selected_Option, "Environment") == 0) current_wifi_menu_state = WIFI_MENU_ENVIRONMENT;
             else if (strcmp(Selected_Option, "Network") == 0) current_wifi_menu_state = WIFI_MENU_NETWORK;
@@ -5804,7 +5797,6 @@ void option_event_cb(lv_event_t *e) {
                 return;
 #endif
             }
-            else if (strcmp(Selected_Option, "Aerial Detector") == 0) current_bluetooth_menu_state = BLUETOOTH_MENU_AERIAL;
             else if (strcmp(Selected_Option, "Raw") == 0) current_bluetooth_menu_state = BLUETOOTH_MENU_RAW;
             rebuild_current_menu();
             option_invoked = false;
