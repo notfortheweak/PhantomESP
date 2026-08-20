@@ -53,21 +53,26 @@ jobs:
           path: |
             ~/esp-idf
             ~/.espressif
-          key: esp-idf-v6.0-${{ runner.os }}-v3
+          key: esp-idf-v6.0-${{ runner.os }}-v4
           restore-keys: |
             esp-idf-v6.0-${{ runner.os }}-
 
       - name: Install ESP-IDF Dependencies
-        if: steps.cache-idf.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y wget git flex bison gperf python3-pip python3-setuptools cmake ninja-build ccache libffi-dev libssl-dev dfu-util
 
+      # Un-gated + idempotent: a cache hit can restore an incomplete ~/.espressif
+      # (missing the Python venv), which makes the later `export.sh` fail. Always
+      # verify and repair rather than trusting cache-hit.
       - name: Install ESP-IDF
-        if: steps.cache-idf.outputs.cache-hit != 'true'
         run: |
-          git clone -b v6.0 --depth 1 --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
-          ~/esp-idf/install.sh
+          if [ ! -d ~/esp-idf/.git ]; then
+            git clone -b v6.0 --depth 1 --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
+          fi
+          if [ ! -x ~/.espressif/python_env/idf6.0_py3.10_env/bin/python ]; then
+            ~/esp-idf/install.sh
+          fi
 
       - name: Apply Custom SDK Config
         run: |
