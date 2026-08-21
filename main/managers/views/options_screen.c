@@ -1311,6 +1311,7 @@ static const char * const detect_main_options[] = {
     "Sweep", "Flock Detection", "PineAP Detection", "Aerial Detector",
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     "Find Flippers", "Find AirTags",
+    "Advertiser Scan", "OUI Device Scan", "GATT Scan",
 #endif
     "WPA3 Compliance", NULL
 };
@@ -1592,10 +1593,7 @@ typedef struct {
 } io_btn_preset_t;
 
 static const io_btn_preset_t io_btn_presets[] = {
-    {"WiFi", "view:wifi", &options_menu_view},
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-    {"BLE", "view:ble", &options_menu_view},
-#endif
+    {"Scan & Analyze", "view:wifi", &options_menu_view},
 #ifdef CONFIG_HAS_NFC
     {"NFC", "view:nfc", &nfc_view},
 #endif
@@ -1754,10 +1752,6 @@ static lv_obj_t *wigle_stats_scroll = NULL;
 static int wigle_stats_popup_selected = 1;
 
 // --- Add Bluetooth submenu arrays and state ---
-static const char * const bluetooth_main_options[] = {
-    "Detect Devices", "List Detected Devices", "Advertiser Scan", "OUI Device Scan", "List Advertisers",
-    "GATT Scan", "Raw", NULL
-};
 static const char * const bluetooth_oui_options[] = {
     "Enter OUI Prefix", "Search Vendors", NULL
 };
@@ -2639,7 +2633,7 @@ const char *options_menu_type_to_string(EOptionsMenuType menuType) {
     case OT_Detect:
         return "Detect";
     case OT_Wifi:
-        return "Wi-Fi";
+        return "Scan & Analyze";
     case OT_Bluetooth:
         return "BLE";
     case OT_GPS:
@@ -2944,7 +2938,7 @@ void options_menu_create() {
         break;
     case OT_Bluetooth:
         switch (current_bluetooth_menu_state) {
-            case BLUETOOTH_MENU_MAIN: options = bluetooth_main_options; break;
+            case BLUETOOTH_MENU_MAIN: options = NULL; break;
             case BLUETOOTH_MENU_DETECT_LIST:
 #ifndef CONFIG_IDF_TARGET_ESP32S2
                 if (ble_device_detect_is_tracking()) {
@@ -5712,98 +5706,6 @@ void option_event_cb(lv_event_t *e) {
     }
 
     // --- Bluetooth submenu navigation ---
-    if (SelectedMenuType == OT_Bluetooth) {
-        if (current_bluetooth_menu_state == BLUETOOTH_MENU_MAIN) {
-            if (strcmp(Selected_Option, "Detect Devices") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-                if (!start_ble_detect_flow()) {
-                    error_popup_create("Scan failed to start");
-                }
-                option_invoked = false;
-                return;
-#else
-                error_popup_create("Device Does not Support Bluetooth...");
-                option_invoked = false;
-                return;
-#endif
-            }
-            if (strcmp(Selected_Option, "List Detected Devices") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-                if (ble_device_detect_get_count() <= 0) {
-                    error_popup_create("No detected devices");
-                } else {
-                    current_bluetooth_menu_state = BLUETOOTH_MENU_DETECT_LIST;
-                    rebuild_current_menu();
-                }
-                option_invoked = false;
-                return;
-#else
-                error_popup_create("Device Does not Support Bluetooth...");
-                option_invoked = false;
-                return;
-#endif
-            }
-            if (strcmp(Selected_Option, "Advertiser Scan") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-                if (!start_ble_adv_flow()) {
-                    error_popup_create("Scan failed to start");
-                }
-                option_invoked = false;
-                return;
-#else
-                error_popup_create("Device Does not Support Bluetooth...");
-                option_invoked = false;
-                return;
-#endif
-            }
-            if (strcmp(Selected_Option, "OUI Device Scan") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-                current_bluetooth_menu_state = BLUETOOTH_MENU_OUI;
-                rebuild_current_menu();
-                option_invoked = false;
-                return;
-#else
-                error_popup_create("Device Does not Support Bluetooth...");
-                option_invoked = false;
-                return;
-#endif
-            }
-            if (strcmp(Selected_Option, "List Advertisers") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-                if (advertiser_scan_get_count() <= 0) {
-                    error_popup_create("No advertisers found");
-                } else {
-                    current_bluetooth_menu_state = BLUETOOTH_MENU_ADV_LIST;
-                    rebuild_current_menu();
-                }
-                option_invoked = false;
-                return;
-#else
-                error_popup_create("Device Does not Support Bluetooth...");
-                option_invoked = false;
-                return;
-#endif
-            }
-            if (strcmp(Selected_Option, "GATT Scan") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-                if (!start_ble_gatt_flow()) {
-                    error_popup_create("Scan failed to start");
-                }
-                option_invoked = false;
-                return;
-#else
-                error_popup_create("Device Does not Support Bluetooth...");
-                option_invoked = false;
-                return;
-#endif
-            }
-            else if (strcmp(Selected_Option, "Raw") == 0) current_bluetooth_menu_state = BLUETOOTH_MENU_RAW;
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-    }
-
     if (SelectedMenuType == OT_Bluetooth && current_bluetooth_menu_state == BLUETOOTH_MENU_OUI) {
         if (strcmp(Selected_Option, "Enter OUI Prefix") == 0) {
             keyboard_view_set_submit_callback(ble_oui_prefix_kb_cb);
@@ -6446,6 +6348,50 @@ void option_event_cb(lv_event_t *e) {
         rebuild_current_menu();
         option_invoked = false;
         return;
+    }
+
+    else if (strcmp(Selected_Option, "Advertiser Scan") == 0) {
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+        SelectedMenuType = OT_Bluetooth;
+        if (!start_ble_adv_flow()) {
+            error_popup_create("Scan failed to start");
+        }
+        option_invoked = false;
+        return;
+#else
+        error_popup_create("Device Does not Support Bluetooth...");
+        option_invoked = false;
+        return;
+#endif
+    }
+
+    else if (strcmp(Selected_Option, "OUI Device Scan") == 0) {
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+        SelectedMenuType = OT_Bluetooth;
+        current_bluetooth_menu_state = BLUETOOTH_MENU_OUI;
+        rebuild_current_menu();
+        option_invoked = false;
+        return;
+#else
+        error_popup_create("Device Does not Support Bluetooth...");
+        option_invoked = false;
+        return;
+#endif
+    }
+
+    else if (strcmp(Selected_Option, "GATT Scan") == 0) {
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+        SelectedMenuType = OT_Bluetooth;
+        if (!start_ble_gatt_flow()) {
+            error_popup_create("Scan failed to start");
+        }
+        option_invoked = false;
+        return;
+#else
+        error_popup_create("Device Does not Support Bluetooth...");
+        option_invoked = false;
+        return;
+#endif
     }
 
 
@@ -9931,7 +9877,7 @@ static void rebuild_current_menu(void) {
             break;
         case OT_Bluetooth:
             switch (current_bluetooth_menu_state) {
-                case BLUETOOTH_MENU_MAIN: options = bluetooth_main_options; break;
+                case BLUETOOTH_MENU_MAIN: options = NULL; break;
                 case BLUETOOTH_MENU_DETECT_LIST:
 #ifndef CONFIG_IDF_TARGET_ESP32S2
                     if (ble_device_detect_is_tracking()) {

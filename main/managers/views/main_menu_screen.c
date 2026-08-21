@@ -154,10 +154,7 @@ typedef struct {
 // Define colors as compile-time constants
 menu_item_t menu_items[] = {
     {"Detect", "ghost", &ghost, 1, {{0}}}, // detection hub (top priority)
-    {"WiFi", "wifi", &wifi, 1, {{0}}}, // applies to all boards
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-    {"BLE", "bluetooth", &bluetooth, 0, {{0}}},
-#endif
+    {"Scan & Analyze", "wifi", &wifi, 1, {{0}}}, // WiFi scan & analyze tools
     {"GPS", "Map", &Map, 2, {{0}}},
 #if CONFIG_HAS_INFRARED
     {"Infrared", "infrared", &infrared, 0, {{0}}}, // main infrared icon
@@ -976,10 +973,7 @@ static void handle_menu_item_selection(int item_index) {
 
     static const menu_action_t menu_actions[] = {
         {"Detect", OT_Detect, &options_menu_view},
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        {"BLE", OT_Bluetooth, &options_menu_view},
-#endif
-        {"WiFi", OT_Wifi, &options_menu_view},
+        {"Scan & Analyze", OT_Wifi, &options_menu_view},
         {"GPS", OT_GPS, &options_menu_view},
 #if CONFIG_HAS_INFRARED
         {"Infrared", 0, &infrared_view},
@@ -1017,10 +1011,8 @@ static void handle_menu_item_selection(int item_index) {
             // Add status display messages for menu navigation
             if (strcmp(menu_actions[i].name, "Detect") == 0) {
                 status_display_show_status("Detect");
-            } else if (strcmp(menu_actions[i].name, "WiFi") == 0) {
-                status_display_show_status("WiFi Menu");
-            } else if (strcmp(menu_actions[i].name, "BLE") == 0) {
-                status_display_show_status("BLE Menu");
+            } else if (strcmp(menu_actions[i].name, "Scan & Analyze") == 0) {
+                status_display_show_status("Scan & Analyze");
             } else if (strcmp(menu_actions[i].name, "GPS") == 0) {
                 status_display_show_status("GPS Menu");
             } else if (strcmp(menu_actions[i].name, "Infrared") == 0) {
