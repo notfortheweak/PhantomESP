@@ -51,6 +51,12 @@ static void scan_scheduler_task(void *arg) {
     aerial_detector_init();
     flock_detector_init();
 
+    // The aerial "network" heuristic flags ordinary WiFi beacons as drone
+    // control links — a huge false-positive rate anywhere with normal APs
+    // (it filled the Drones tile with phantom hits). Restrict headless
+    // detection to precise signatures: OpenDroneID + DJI.
+    aerial_detector_enable_network_detection(false);
+
     while (s_run) {
         // ---- WiFi phases (shared WiFi radio, one owner at a time) ----
         // AP scan via the ap_scan module so ap_scan_get_count() is populated

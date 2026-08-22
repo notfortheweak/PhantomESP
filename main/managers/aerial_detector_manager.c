@@ -177,14 +177,19 @@ void aerial_detector_init(void) {
     if (device_mutex == NULL) {
         device_mutex = xSemaphoreCreateMutex();
     }
-    
+
+    // stop_scan retains the buffer now, so free any prior allocation here rather
+    // than just dropping the pointer (avoids a leak when re-init'd per session).
+    if (devices) {
+        free(devices);
+    }
     devices = NULL;
     device_count = 0;
     device_capacity = 0;
     is_scanning = false;
     wifi_scan_phase = false;
     ble_scan_phase = false;
-    
+
     build_allowed_channels_list();
     
     ESP_LOGI(TAG, "aerial detector initialized with %d channels", allowed_channel_count);
@@ -660,14 +665,18 @@ esp_err_t aerial_detector_stop_scan(void) {
     stop_wifi_phase();
     stop_ble_phase();
     
-    if (devices) {
-        free(devices);
-        devices = NULL;
+    // Keep the device buffer allocated across stop/start (it is freed only in
+    // aerial_detector_deinit). Freeing it here races the WiFi/BLE decode
+    // callbacks, which write through a device pointer returned by
+    // find_or_create_device *after* releasing device_mutex — a write-to-freed
+    // heap that aborts under the dashboard's rapid start/stop cycling. Reset the
+    // count under the mutex instead so the buffer stays valid for late callbacks.
+    if (devices && xSemaphoreTake(device_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        memset(devices, 0, device_capacity * sizeof(AerialDevice));
         device_count = 0;
-        device_capacity = 0;
-        ESP_LOGI(TAG, "freed device array");
+        xSemaphoreGive(device_mutex);
     }
-    
+
     ESP_LOGI(TAG, "scan stopped");
     glog("Scan Complete\n");
     return ESP_OK;
@@ -794,7 +803,14 @@ static AerialDevice* find_or_create_device(const uint8_t *mac) {
     if (xSemaphoreTake(device_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         return NULL;
     }
-    
+
+    // Reject callbacks that fire after the scan stopped (the buffer is retained
+    // across stop, so without this a late packet would re-populate the count).
+    if (!is_scanning) {
+        xSemaphoreGive(device_mutex);
+        return NULL;
+    }
+
     if (tracked_mac[0] != '\0' && strcmp(mac_str, tracked_mac) != 0) {
         xSemaphoreGive(device_mutex);
         return NULL;
