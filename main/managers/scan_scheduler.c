@@ -42,6 +42,15 @@ static void scan_scheduler_task(void *arg) {
     (void)arg;
     ESP_LOGI(TAG, "scan scheduler started");
 
+    // Aerial and flock create their mutexes in _init() (normally called by the
+    // aerial/flock command view, which the dashboard bypasses). Init them once
+    // here so their scan callbacks never take a NULL mutex — otherwise the
+    // device asserts with "xQueueSemaphoreTake ... pxQueue" the first time a
+    // packet arrives during those phases. The mutexes persist across start/stop;
+    // only _deinit() frees them, which we deliberately never call.
+    aerial_detector_init();
+    flock_detector_init();
+
     while (s_run) {
         // ---- WiFi phases (shared WiFi radio, one owner at a time) ----
         // AP scan via the ap_scan module so ap_scan_get_count() is populated
