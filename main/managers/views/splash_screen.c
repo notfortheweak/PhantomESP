@@ -1,5 +1,6 @@
 #include "managers/views/splash_screen.h"
 #include "managers/views/main_menu_screen.h"
+#include "managers/views/scan_dashboard_screen.h"
 #include "managers/views/setup_wizard_screen.h"
 #include "managers/views/music_visualizer.h"
 #include "managers/views/lockscreen.h"
@@ -238,7 +239,9 @@ static void fade_out_cb(void *var) {
     lockscreen_reset_input();
     display_manager_switch_view(&lockscreen_view);
   } else {
-    display_manager_switch_view(&main_menu_view);
+    // Auto-boot into the live scan dashboard (appliance mode); the menu is one
+    // input away via the dashboard's exit handler.
+    display_manager_switch_view(&scan_dashboard_view);
   }
 }
 

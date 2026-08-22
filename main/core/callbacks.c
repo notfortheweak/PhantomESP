@@ -90,6 +90,7 @@ static const uint8_t pineapple_ouis[][3] = {
 static const size_t pineapple_oui_count = sizeof(pineapple_ouis) / sizeof(pineapple_ouis[0]);
 static pineap_network_t *pineap_networks = NULL;
 static int pineap_network_count = 0;
+static int pineap_last_count = 0;  // retained across stop() for the live dashboard
 static bool pineap_detection_active = false;
 static uint8_t current_channel = 1;
 static esp_timer_handle_t channel_hop_timer = NULL;
@@ -1879,9 +1880,14 @@ void start_pineap_detection(void) {
 
 void stop_pineap_detection(void) {
     pineap_detection_active = false;
+    pineap_last_count = pineap_network_count;  // retain before free_pineap_tables() zeroes it
     stop_channel_hopping();
     stop_pineap_log_worker();
     free_pineap_tables();
+}
+
+int pineap_get_detected_count(void) {
+    return pineap_detection_active ? pineap_network_count : pineap_last_count;
 }
 
 void wardriving_register_stream_handler(void) {

@@ -33,6 +33,8 @@ typedef struct {
 // PineAP detection control functions
 void start_pineap_detection(void);
 void stop_pineap_detection(void);
+// Number of suspected PineAP/rogue networks detected in the current session.
+int pineap_get_detected_count(void);
 
 // Wardriving channel hopping control functions
 bool start_wardriving(void);
