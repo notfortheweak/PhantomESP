@@ -1731,9 +1731,6 @@ static int wigle_stats_popup_selected = 1;
 static const char * const bluetooth_oui_options[] = {
     "Enter OUI Prefix", "Search Vendors", NULL
 };
-static const char * const bluetooth_raw_options[] = {
-    "Raw BLE Scanner", NULL
-};
 static const char * const bluetooth_gatt_options[] = {
     "Start GATT Scan", "List GATT Devices", "Select GATT Device", "Enumerate Services", "Track Device", NULL
 };
@@ -1752,7 +1749,6 @@ typedef enum {
     BLUETOOTH_MENU_OUI,
     BLUETOOTH_MENU_OUI_VENDOR_LIST,
     BLUETOOTH_MENU_SPAM,
-    BLUETOOTH_MENU_RAW,
     BLUETOOTH_MENU_GATT,
     BLUETOOTH_MENU_AERIAL
 } BluetoothMenuState;
@@ -2857,7 +2853,6 @@ void options_menu_create() {
             case BLUETOOTH_MENU_OUI: options = bluetooth_oui_options; break;
             case BLUETOOTH_MENU_OUI_VENDOR_LIST: options = ble_oui_vendor_list_get_options(); break;
             case BLUETOOTH_MENU_SPAM: options = NULL; break;
-            case BLUETOOTH_MENU_RAW: options = bluetooth_raw_options; break;
             case BLUETOOTH_MENU_GATT: options = bluetooth_gatt_options; break;
             case BLUETOOTH_MENU_AERIAL: options = bluetooth_aerial_options; break;
         }
@@ -6248,17 +6243,6 @@ void option_event_cb(lv_event_t *e) {
 
 
 
-    else if (strcmp(Selected_Option, "Raw BLE Scanner") == 0) {
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("blescan -r");
-        view_switched = true;
-#else
-        error_popup_create("Device Does not Support Bluetooth...");
-        
-#endif
-    }
 
 
     else if (strcmp(Selected_Option, "Start GATT Scan") == 0) {
@@ -9506,7 +9490,6 @@ static void rebuild_current_menu(void) {
                     timer_period = 25;
                     break;
                 case BLUETOOTH_MENU_SPAM: options = NULL; break;
-                case BLUETOOTH_MENU_RAW: options = bluetooth_raw_options; break;
                 case BLUETOOTH_MENU_GATT: options = bluetooth_gatt_options; break;
                 case BLUETOOTH_MENU_AERIAL: options = bluetooth_aerial_options; break;
             }
