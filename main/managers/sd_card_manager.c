@@ -1588,8 +1588,6 @@ esp_err_t sd_card_setup_directory_structure() {
   const char *downloads_dir = SD_DIR_DOWNLOADS;
   const char *themes_dir = SD_DIR_THEMES;
   const char *active_theme_dir = SD_DIR_THEMES "/active";
-  const char *evil_portal_dir = SD_GHOSTESP_ROOT "/evil_portal";
-  const char *evil_portal_portals_dir = SD_GHOSTESP_ROOT "/evil_portal/portals";
   const char *universals_dir = SD_GHOSTESP_ROOT "/infrared/universals";
 #if defined(CONFIG_NFC_PN532)
   const char *nfc_dir = "/mnt/ghostesp/nfc";
@@ -1647,14 +1645,6 @@ esp_err_t sd_card_setup_directory_structure() {
   if (ret != ESP_OK) return ret;
 
   ret = ensure_sd_dir_exists(sweeps_dir);
-  if (ret != ESP_OK) return ret;
-
-  // Create evil_portal directory
-  ret = ensure_sd_dir_exists(evil_portal_dir);
-  if (ret != ESP_OK) return ret;
-
-  // Create evil_portal/portals directory
-  ret = ensure_sd_dir_exists(evil_portal_portals_dir);
   if (ret != ESP_OK) return ret;
 
   const char *dns_sinkhole_dir = "/mnt/ghostesp/dns_sinkhole";
@@ -1896,45 +1886,6 @@ bool sd_card_is_virtual_storage() {
 #else
   return false;
 #endif
-}
-
-int get_evil_portal_list(char portal_names[MAX_PORTALS][MAX_PORTAL_NAME]) {
-    const char *portal_dir = "/mnt/ghostesp/evil_portal/portals";
-    DIR *dir = opendir(portal_dir);
-    if (!dir){
-        ESP_LOGW(TAG, "Failed to open directory: %s\n", portal_dir);
-        return -1; // Return -1 if directory cannot be opened
-    }
-    ESP_LOGI(TAG, "Listing portals in directory: %s\n", portal_dir);
-    struct dirent *entry;
-    int count = 0;
-    while ((entry = readdir(dir)) && count < MAX_PORTALS) {
-        bool is_reg = false;
-        if (entry->d_type == DT_REG) {
-            is_reg = true;
-        } else if (entry->d_type == DT_UNKNOWN) {
-            // fallback to stat when d_type is unknown
-            char fullpath[256];
-            int written = snprintf(fullpath, sizeof(fullpath), "%s/%s", portal_dir, entry->d_name);
-            if (written > 0 && written < (int)sizeof(fullpath)) {
-                struct stat st;
-                if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode)) {
-                    is_reg = true;
-                }
-            }
-        }
-
-        if (is_reg) {
-            const char *dot = strrchr(entry->d_name, '.');
-            if (dot && strcmp(dot, ".html") == 0) {
-                strncpy(portal_names[count], entry->d_name, MAX_PORTAL_NAME - 1);
-                portal_names[count][MAX_PORTAL_NAME - 1] = '\0';
-                count++;
-            }
-        }
-    }
-    closedir(dir);
-    return count;
 }
 
 int sd_card_list_dir_paged(const char *dir_path, const char *ext,

@@ -56,19 +56,11 @@
 #include "esp_heap_caps.h"
 #include <dirent.h>
 
-#define PORTAL_PAGE_SIZE 8    /* keep portal pages small to avoid LVGL stalls */
 #define WIGLE_CSV_PAGE_SIZE 8
 
-static detail_view_t *sinkhole_detail_view = NULL;
-static void sinkhole_detail_back_cb(lv_event_t *e);
 static popup_confirm_t *settings_confirm_popup = NULL;
 
-static char selected_portal[MAX_PORTAL_NAME] = {0};
-static char selected_karma_portal[MAX_PORTAL_NAME] = {0};
 
-static char *evil_portal_names = NULL;   /* flat name storage for current page */
-static const char **evil_portal_options = NULL; /* NULL-terminated pointer array  */
-static int   portal_page_offset   = 0;   /* first file index of current page    */
 static bool  portal_has_next_page = false;
 
 static char *wigle_csv_names = NULL;
@@ -77,14 +69,7 @@ static int wigle_csv_page_offset = 0;
 static bool wigle_csv_has_next_page = false;
 
 
-static char *blocklist_file_names = NULL;
-static const char **blocklist_file_options = NULL;
-static int blocklist_page_offset = 0;
-static bool blocklist_has_next_page = false;
 
-static void blocklist_free_cache(void);
-static const char **blocklist_load_page(void);
-#define BLOCKLIST_PAGE_SIZE 8
 static bool wigle_csv_browser_active = false;
 static char selected_wigle_csv[MAX_PORTAL_NAME] = {0};
 
@@ -1230,15 +1215,10 @@ static void options_info_scroll_step(int direction) {
 
 typedef enum {
     WIFI_MENU_MAIN,
-    WIFI_MENU_ATTACKS,
     WIFI_MENU_SCAN_SELECT,
     WIFI_MENU_ENVIRONMENT,
     WIFI_MENU_NETWORK,
-    WIFI_MENU_EVIL_PORTAL,
     WIFI_MENU_CONNECTION,
-    WIFI_MENU_MISC,
-    WIFI_MENU_EVIL_PORTAL_SELECT,
-    WIFI_MENU_KARMA_PORTAL_SELECT,
     WIFI_MENU_AP_LIST,
     WIFI_MENU_AP_DETAILS,
     WIFI_MENU_STA_LIST,
@@ -1246,10 +1226,6 @@ typedef enum {
     WIFI_MENU_SCANALL_LIST,
     WIFI_MENU_AP_MULTI_SELECT,
     WIFI_MENU_STA_MULTI_SELECT,
-    WIFI_MENU_DNS_SINKHOLE,
-    WIFI_MENU_DNS_SINKHOLE_DOWNLOAD,
-    WIFI_MENU_DNS_SINKHOLE_FILE_PICK,
-    WIFI_MENU_DNS_SINKHOLE_DETAILS,
     WIFI_MENU_MDNS_LIST,
     WIFI_MENU_MDNS_DETAILS
 } WifiMenuState;
@@ -1967,7 +1943,6 @@ static int button_height_global = 0;
 static bool is_small_screen_global = false;
 
 static void rebuild_current_menu(void); // Forward declaration
-static void portal_free_cache(void);    // Forward declaration
 
 static void update_scroll_buttons_visibility(void);
 const char *options_menu_type_to_string(EOptionsMenuType menuType);
@@ -2230,22 +2205,6 @@ static bool start_sweep_flow(void) {
     return true;
 }
 
-static void sinkhole_detail_back_cb(lv_event_t *e) {
-    (void)e;
-    if (sinkhole_detail_view) {
-        detail_view_destroy(sinkhole_detail_view);
-        sinkhole_detail_view = NULL;
-    }
-    current_wifi_menu_state = WIFI_MENU_DNS_SINKHOLE;
-    SelectedMenuType = OT_Wifi;
-    suppress_wifi_state_reset_once = true;
-    rebuild_current_menu();
-    option_invoked = false;
-    display_manager_add_status_bar(options_menu_type_to_string(SelectedMenuType));
-#ifdef CONFIG_USE_TOUCHSCREEN
-    update_scroll_buttons_visibility();
-#endif
-}
 
 static void update_settings_arrows_visibility(void) {
     if (!menu_container || !lv_obj_is_valid(menu_container)) return;
@@ -2471,54 +2430,6 @@ static void ap_password_kb_cb(const char *text);
 static void sta_ssid_kb_cb(const char *text);
 static void sta_password_kb_cb(const char *text);
 
-static void evil_portal_ssid_cb(const char *input) {
-    if (!input || !selected_portal[0]) return;
-    char ssid[64] = {0};
-    char pass[64] = {0};
-    const char *space = strchr(input, ' ');
-    if (space) {
-        size_t ssid_len = space - input;
-        if (ssid_len == 0 || ssid_len >= sizeof(ssid)) {
-            error_popup_create("ssid too long");
-            return;
-        }
-        memcpy(ssid, input, ssid_len);
-        ssid[ssid_len] = '\0';
-        const char *pw = space + 1;
-        size_t pass_len = strlen(pw);
-        if (pass_len > 0) {
-            if (pass_len < 8) {
-                error_popup_create("Password must be at least 8 chars");
-                return;
-            }
-            if (pass_len >= sizeof(pass)) {
-                error_popup_create("pass too long");
-                return;
-            }
-            memcpy(pass, pw, pass_len);
-            pass[pass_len] = '\0';
-        }
-    } else {
-        size_t ssid_len = strlen(input);
-        if (ssid_len == 0 || ssid_len >= sizeof(ssid)) {
-            error_popup_create("ssid too long");
-            return;
-        }
-        memcpy(ssid, input, ssid_len);
-        ssid[ssid_len] = '\0';
-    }
-    char cmd[256];
-    if (pass[0]) {
-        snprintf(cmd, sizeof(cmd), "startportal %s %s %s", selected_portal, ssid, pass);
-    } else {
-        snprintf(cmd, sizeof(cmd), "startportal %s %s", selected_portal, ssid);
-    }
-terminal_set_return_view(&options_menu_view);
-display_manager_switch_view(&terminal_view);
-    simulateCommand(cmd);
-    keyboard_view_set_submit_callback(NULL);
-    selected_portal[0] = '\0';
-}
 
 // Add scroll functions
 static void scroll_options_up(lv_event_t *e) {
@@ -2877,36 +2788,7 @@ void options_menu_create() {
             case WIFI_MENU_SCAN_SELECT: options = wifi_scan_select_options; break;
             case WIFI_MENU_ENVIRONMENT: options = wifi_environment_options; break;
             case WIFI_MENU_NETWORK: options = wifi_network_options; break;
-            case WIFI_MENU_DNS_SINKHOLE_FILE_PICK:
-                options = blocklist_file_options;
-                break;
-            case WIFI_MENU_DNS_SINKHOLE_DETAILS:
-                options = NULL;
-                break;
             case WIFI_MENU_CONNECTION: options = wifi_connection_options; break;
-            case WIFI_MENU_ATTACKS:
-            case WIFI_MENU_EVIL_PORTAL:
-            case WIFI_MENU_MISC:
-            case WIFI_MENU_DNS_SINKHOLE:
-            case WIFI_MENU_DNS_SINKHOLE_DOWNLOAD:
-                // Torn-down menus (attacks/evil-portal/misc/sinkhole); fall back to main.
-                options = wifi_main_options;
-                break;
-            case WIFI_MENU_EVIL_PORTAL_SELECT:
-            {
-                // Portal population is now handled in rebuild_current_menu
-                // Just set a placeholder to indicate we're in the right state
-                ESP_LOGI(TAG, "Evil portal select menu state activated");
-                options = evil_portal_options;
-                break;
-            }
-            case WIFI_MENU_KARMA_PORTAL_SELECT:
-            {
-                // Same portal list as evil portal select — population in rebuild_current_menu
-                ESP_LOGI(TAG, "Karma portal select menu state activated");
-                options = evil_portal_options;
-                break;
-            }
             case WIFI_MENU_AP_LIST:
                 options = ap_list_get_options();
                 break;
@@ -4750,9 +4632,7 @@ void handle_hardware_button_press_options(InputEvent *event) {
             // Calculate swipe thresholds
             int thr_y = LV_VER_RES / OPT_SWIPE_THRESHOLD_RATIO;
             // Lower threshold for portal HTML lists (short lists need a lighter swipe)
-            if (current_wifi_menu_state == WIFI_MENU_EVIL_PORTAL_SELECT ||
-                current_wifi_menu_state == WIFI_MENU_KARMA_PORTAL_SELECT ||
-                current_wifi_menu_state == WIFI_MENU_AP_LIST ||
+            if (current_wifi_menu_state == WIFI_MENU_AP_LIST ||
                 current_wifi_menu_state == WIFI_MENU_STA_LIST ||
                 current_wifi_menu_state == WIFI_MENU_SCANALL_LIST ||
                 (SelectedMenuType == OT_Bluetooth &&
@@ -6218,34 +6098,6 @@ void option_event_cb(lv_event_t *e) {
 
 
 
-    else if (current_wifi_menu_state == WIFI_MENU_EVIL_PORTAL_SELECT) {
-        /* Non-selectable placeholder */
-        if (strcmp(Selected_Option, "No portal files found") == 0) {
-            option_invoked = false;
-            return;
-        }
-        /* Page navigation */
-        if (strcmp(Selected_Option, "Next >") == 0) {
-            portal_page_offset += PORTAL_PAGE_SIZE;
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-        if (strcmp(Selected_Option, "< Prev") == 0) {
-            portal_page_offset -= PORTAL_PAGE_SIZE;
-            if (portal_page_offset < 0) portal_page_offset = 0;
-            rebuild_current_menu();
-            option_invoked = false;
-            return;
-        }
-        /* Prompt for SSID after selecting a portal file */
-        strncpy(selected_portal, Selected_Option, MAX_PORTAL_NAME - 1);
-        selected_portal[MAX_PORTAL_NAME - 1] = '\0';
-        keyboard_view_set_submit_callback(evil_portal_ssid_cb);
-        display_manager_switch_view(&keyboard_view);
-        keyboard_view_set_placeholder("SSID");
-        return;
-    }
 
 
 
@@ -6719,9 +6571,6 @@ void options_menu_destroy() {
 
     is_settings_mode = false;
 
-    portal_page_offset = 0;
-    portal_free_cache();
-
     wigle_csv_page_offset = 0;
     wigle_csv_browser_active = false;
     selected_wigle_csv[0] = '\0';
@@ -6914,17 +6763,6 @@ static void back_event_cb(lv_event_t *e) {
         return;
     }
 
-    // If in Evil Portal select submenu, go back to Evil Portal menu
-    if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_EVIL_PORTAL_SELECT) {
-        portal_page_offset = 0;
-        portal_free_cache();
-        if (options_menu_restore_previous_state()) {
-            return;
-        }
-        current_wifi_menu_state = WIFI_MENU_EVIL_PORTAL;
-        rebuild_current_menu();
-        return;
-    }
     // If in AP details view, go back to AP list
     if (SelectedMenuType == OT_Wifi && current_wifi_menu_state == WIFI_MENU_AP_DETAILS) {
         ap_detail_back_cb(NULL);
@@ -6987,27 +6825,6 @@ static void back_event_cb(lv_event_t *e) {
     }
     // If in a Wi-Fi submenu (but not main), go back to main Wi-Fi menu
     if (SelectedMenuType == OT_Wifi && current_wifi_menu_state != WIFI_MENU_MAIN) {
-        if (current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DOWNLOAD) {
-            if (options_menu_restore_previous_state()) {
-                return;
-            }
-            current_wifi_menu_state = WIFI_MENU_DNS_SINKHOLE;
-            rebuild_current_menu();
-            return;
-        }
-        if (current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_FILE_PICK) {
-            blocklist_free_cache();
-            if (options_menu_restore_previous_state()) {
-                return;
-            }
-            current_wifi_menu_state = WIFI_MENU_DNS_SINKHOLE;
-            rebuild_current_menu();
-            return;
-        }
-        if (current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_DETAILS) {
-            sinkhole_detail_back_cb(NULL);
-            return;
-        }
         if (options_menu_restore_previous_state()) {
             return;
         }
@@ -9572,187 +9389,8 @@ static void wigle_show_csv_details_popup(const char *filename) {
  * Portal page helpers
  * ----------------------------------------------------------------------- */
 
-/** Free the heap storage for the currently loaded portal page. */
-static void portal_free_cache(void) {
-    if (evil_portal_names)   { free(evil_portal_names);   evil_portal_names   = NULL; }
-    if (evil_portal_options) { free(evil_portal_options); evil_portal_options = NULL; }
-}
 
-/**
- * Load one page of .html files from the portals directory into
- * evil_portal_names / evil_portal_options.
- *
- * Layout of the returned NULL-terminated options array:
- *   page 0 : [default]  [file0 … fileN]  [Next > if more]
- *   page 1+: [< Prev]   [file0 … fileN]  [Next > if more]
- *
- * Always frees any previously cached page first.
- * Returns evil_portal_options on success, a static fallback {"default",NULL}
- * on allocation or directory-open failure.
- *
- * The caller is responsible for JIT-mounting/unmounting the SD card around
- * this call on shared-SPI boards.
- */
-static const char **portal_load_page(void) {
-    static const char *fallback[] = {"default", NULL};
 
-    portal_free_cache();
-
-    /* ---- read one page from the SD card ---- */
-    char (*file_names)[MAX_PORTAL_NAME] =
-        malloc(PORTAL_PAGE_SIZE * MAX_PORTAL_NAME);
-    if (!file_names) {
-        ESP_LOGE(TAG, "portal_load_page: OOM for file name buffer");
-        return fallback;
-    }
-
-    int count = sd_card_list_dir_paged(
-        "/mnt/ghostesp/evil_portal/portals", ".html",
-        portal_page_offset, PORTAL_PAGE_SIZE,
-        file_names, &portal_has_next_page);
-
-    if (count < 0) {
-        ESP_LOGW(TAG, "portal_load_page: directory scan failed (offset=%d)", portal_page_offset);
-        free(file_names);
-        return fallback;
-    }
-
-    /* ---- determine optional prefix / suffix navigation items ---- */
-    bool show_prev    = (portal_page_offset > 0);
-    bool show_default = (portal_page_offset == 0);
-    bool show_next    = portal_has_next_page;
-
-    int total = (show_prev ? 1 : 0) + (show_default ? 1 : 0)
-              + count + (show_next ? 1 : 0);
-
-    if (total == 0) {
-        /* Empty directory — show a non-selectable placeholder */
-        free(file_names);
-        static const char *empty[] = {"No portal files found", NULL};
-        return empty;
-    }
-
-    /* ---- allocate final storage ---- */
-    evil_portal_names   = malloc(MAX_PORTAL_NAME * (size_t)total);
-    evil_portal_options = malloc(sizeof(char *) * ((size_t)total + 1));
-
-    if (!evil_portal_names || !evil_portal_options) {
-        ESP_LOGE(TAG, "portal_load_page: OOM for portal list (total=%d)", total);
-        free(file_names);
-        portal_free_cache();
-        return fallback;
-    }
-
-    /* ---- fill options array ---- */
-    int idx = 0;
-
-    if (show_prev) {
-        strcpy(evil_portal_names + idx * MAX_PORTAL_NAME, "< Prev");
-        evil_portal_options[idx] = evil_portal_names + idx * MAX_PORTAL_NAME;
-        idx++;
-    }
-    if (show_default) {
-        strcpy(evil_portal_names + idx * MAX_PORTAL_NAME, "default");
-        evil_portal_options[idx] = evil_portal_names + idx * MAX_PORTAL_NAME;
-        idx++;
-    }
-    for (int i = 0; i < count; i++) {
-        strcpy(evil_portal_names + idx * MAX_PORTAL_NAME, file_names[i]);
-        evil_portal_options[idx] = evil_portal_names + idx * MAX_PORTAL_NAME;
-        idx++;
-    }
-    if (show_next) {
-        strcpy(evil_portal_names + idx * MAX_PORTAL_NAME, "Next >");
-        evil_portal_options[idx] = evil_portal_names + idx * MAX_PORTAL_NAME;
-        idx++;
-    }
-    evil_portal_options[idx] = NULL;
-
-    free(file_names);
-
-    ESP_LOGI(TAG, "portal page loaded: offset=%d files=%d prev=%d next=%d "
-             "heap_used=%zu bytes",
-             portal_page_offset, count, show_prev, show_next,
-             (size_t)total * MAX_PORTAL_NAME + sizeof(char *) * ((size_t)total + 1));
-
-    return evil_portal_options;
-}
-
-static void blocklist_free_cache(void) {
-    if (blocklist_file_names) { free(blocklist_file_names); blocklist_file_names = NULL; }
-    if (blocklist_file_options) { free(blocklist_file_options); blocklist_file_options = NULL; }
-}
-
-static const char **blocklist_load_page(void) {
-    blocklist_free_cache();
-
-    char (*file_names)[MAX_PORTAL_NAME] =
-        malloc(BLOCKLIST_PAGE_SIZE * MAX_PORTAL_NAME);
-    if (!file_names) return NULL;
-
-    int raw_count = sd_card_list_dir_paged(
-        SINKHOLE_DIR_PATH, ".txt",
-        blocklist_page_offset * BLOCKLIST_PAGE_SIZE, BLOCKLIST_PAGE_SIZE + 1,
-        file_names, &blocklist_has_next_page);
-
-    if (raw_count < 0) {
-        free(file_names);
-        return NULL;
-    }
-
-    int count = 0;
-    for (int i = 0; i < raw_count; i++) {
-        if (strcmp(file_names[i], "stats.txt") == 0) continue;
-        if (i != count) strcpy(file_names[count], file_names[i]);
-        count++;
-    }
-
-    blocklist_has_next_page = (raw_count > BLOCKLIST_PAGE_SIZE);
-    if (count > BLOCKLIST_PAGE_SIZE) {
-        count = BLOCKLIST_PAGE_SIZE;
-        blocklist_has_next_page = true;
-    }
-
-    bool show_prev = (blocklist_page_offset > 0);
-    bool show_next = blocklist_has_next_page;
-    int total = (show_prev ? 1 : 0) + count + (show_next ? 1 : 0);
-
-    if (total == 0) {
-        free(file_names);
-        return NULL;
-    }
-
-    blocklist_file_names   = malloc(MAX_PORTAL_NAME * (size_t)total);
-    blocklist_file_options = malloc(sizeof(char *) * ((size_t)total + 1));
-
-    if (!blocklist_file_names || !blocklist_file_options) {
-        free(file_names);
-        blocklist_free_cache();
-        return NULL;
-    }
-
-    int idx = 0;
-
-    if (show_prev) {
-        strcpy(blocklist_file_names + idx * MAX_PORTAL_NAME, "< Prev");
-        blocklist_file_options[idx] = blocklist_file_names + idx * MAX_PORTAL_NAME;
-        idx++;
-    }
-    for (int i = 0; i < count; i++) {
-        strcpy(blocklist_file_names + idx * MAX_PORTAL_NAME, file_names[i]);
-        blocklist_file_options[idx] = blocklist_file_names + idx * MAX_PORTAL_NAME;
-        idx++;
-    }
-    if (show_next) {
-        strcpy(blocklist_file_names + idx * MAX_PORTAL_NAME, "Next >");
-        blocklist_file_options[idx] = blocklist_file_names + idx * MAX_PORTAL_NAME;
-        idx++;
-    }
-    blocklist_file_options[idx] = NULL;
-
-    free(file_names);
-    return blocklist_file_options;
-}
 
 static void rebuild_current_menu(void) {
     options_menu_push_rendered_state();
@@ -9787,59 +9425,7 @@ static void rebuild_current_menu(void) {
                 case WIFI_MENU_SCAN_SELECT: options = wifi_scan_select_options; break;
                 case WIFI_MENU_ENVIRONMENT: options = wifi_environment_options; break;
                 case WIFI_MENU_NETWORK: options = wifi_network_options; break;
-                case WIFI_MENU_DNS_SINKHOLE_FILE_PICK:
-                    options = blocklist_file_options;
-                    break;
-                case WIFI_MENU_DNS_SINKHOLE_DETAILS:
-                    options = NULL;
-                    break;
                 case WIFI_MENU_CONNECTION: options = wifi_connection_options; break;
-                case WIFI_MENU_ATTACKS:
-                case WIFI_MENU_EVIL_PORTAL:
-                case WIFI_MENU_MISC:
-                case WIFI_MENU_DNS_SINKHOLE:
-                case WIFI_MENU_DNS_SINKHOLE_DOWNLOAD:
-                    // Torn-down menus (attacks/evil-portal/misc/sinkhole); fall back to main.
-                    options = wifi_main_options;
-                    break;
-                case WIFI_MENU_EVIL_PORTAL_SELECT:
-                {
-                    /* JIT-mount on shared-SPI boards before scanning SD */
-                    bool jit_mounted = false;
-                    bool display_suspended = false;
-#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
-                    if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething") == 0) {
-                        if (!sd_card_manager.is_initialized) {
-                            if (sd_card_mount_for_flush(&display_suspended) == ESP_OK) {
-                                jit_mounted = true;
-                            }
-                        }
-                    }
-#endif
-                    options = portal_load_page();
-                    timer_period = 25;
-                    if (jit_mounted) sd_card_unmount_after_flush(display_suspended);
-                    break;
-                }
-                case WIFI_MENU_KARMA_PORTAL_SELECT:
-                {
-                    /* Reuse same SD directory as evil portal. JIT-mount if needed. */
-                    bool jit_mounted = false;
-                    bool display_suspended = false;
-#ifdef CONFIG_BUILD_CONFIG_TEMPLATE
-                    if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething") == 0) {
-                        if (!sd_card_manager.is_initialized) {
-                            if (sd_card_mount_for_flush(&display_suspended) == ESP_OK) {
-                                jit_mounted = true;
-                            }
-                        }
-                    }
-#endif
-                    options = portal_load_page();
-                    timer_period = 25;
-                    if (jit_mounted) sd_card_unmount_after_flush(display_suspended);
-                    break;
-                }
                 case WIFI_MENU_AP_LIST:
                     options = ap_list_get_options();
                     timer_period = 25;
@@ -10211,12 +9797,9 @@ static void menu_builder_cb(lv_timer_t *t)
     const bool is_portal_select =
         (!is_settings_mode) &&
         ((SelectedMenuType == OT_Wifi &&
-          (current_wifi_menu_state == WIFI_MENU_EVIL_PORTAL_SELECT ||
-           current_wifi_menu_state == WIFI_MENU_KARMA_PORTAL_SELECT ||
-           current_wifi_menu_state == WIFI_MENU_AP_LIST ||
+          (current_wifi_menu_state == WIFI_MENU_AP_LIST ||
            current_wifi_menu_state == WIFI_MENU_STA_LIST ||
-           current_wifi_menu_state == WIFI_MENU_SCANALL_LIST ||
-           current_wifi_menu_state == WIFI_MENU_DNS_SINKHOLE_FILE_PICK)) ||
+           current_wifi_menu_state == WIFI_MENU_SCANALL_LIST)) ||
          SelectedMenuType == OT_WigleManualUpload);
 
     const int BATCH = is_portal_select ? 2 : 6;

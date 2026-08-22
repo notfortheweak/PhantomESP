@@ -122,7 +122,6 @@ typedef struct {
 void sd_card_get_cached_stats(sd_card_cached_stats_t *out);
 
 // List evil portal directories from SD card (legacy — capped at MAX_PORTALS)
-int get_evil_portal_list(char portal_names[MAX_PORTALS][MAX_PORTAL_NAME]);
 
 /**
  * sd_card_list_dir_paged - generic paginated directory listing.
