@@ -10,7 +10,9 @@
 struct scan_tile_t {
     lv_obj_t *card;
     lv_obj_t *count_label;
-    lv_obj_t *bar;
+    lv_obj_t *bar;        // level-bar track (plain lv_obj; lv_bar isn't built on
+                          // every board's LVGL config, so we roll our own)
+    lv_obj_t *bar_fill;   // indicator child, width set as a percentage of track
     int last_count;
     scan_severity_t last_sev;
     // palette (captured at create so update() stays theme-consistent)
@@ -69,12 +71,24 @@ scan_tile_t *scan_tile_create(lv_obj_t *parent, const char *label) {
     lv_obj_set_style_text_color(t->count_label, lv_color_hex(t->dim), 0);
     lv_obj_set_style_text_font(t->count_label, &lv_font_montserrat_24, 0);
 
-    t->bar = lv_bar_create(t->card);
+    t->bar = lv_obj_create(t->card);
     lv_obj_set_size(t->bar, LV_PCT(100), 4);
-    lv_bar_set_range(t->bar, 0, SCAN_TILE_BAR_MAX);
-    lv_bar_set_value(t->bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(t->bar, lv_color_hex(t->surface), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(t->bar, lv_color_hex(t->dim), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(t->bar, lv_color_hex(t->surface), 0);
+    lv_obj_set_style_bg_opa(t->bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(t->bar, 0, 0);
+    lv_obj_set_style_radius(t->bar, 0, 0);
+    lv_obj_set_style_pad_all(t->bar, 0, 0);
+    lv_obj_clear_flag(t->bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    t->bar_fill = lv_obj_create(t->bar);
+    lv_obj_set_size(t->bar_fill, LV_PCT(0), LV_PCT(100));
+    lv_obj_align(t->bar_fill, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_bg_color(t->bar_fill, lv_color_hex(t->dim), 0);
+    lv_obj_set_style_bg_opa(t->bar_fill, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(t->bar_fill, 0, 0);
+    lv_obj_set_style_radius(t->bar_fill, 0, 0);
+    lv_obj_set_style_pad_all(t->bar_fill, 0, 0);
+    lv_obj_clear_flag(t->bar_fill, LV_OBJ_FLAG_SCROLLABLE);
 
     return t;
 }
@@ -93,8 +107,8 @@ void scan_tile_set(scan_tile_t *t, int count, scan_severity_t sev) {
     int bar_val = count;
     if (bar_val > SCAN_TILE_BAR_MAX) bar_val = SCAN_TILE_BAR_MAX;
     if (bar_val < 0) bar_val = 0;
-    lv_bar_set_value(t->bar, bar_val, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(t->bar, lv_color_hex(color), LV_PART_INDICATOR);
+    lv_obj_set_width(t->bar_fill, LV_PCT(bar_val * 100 / SCAN_TILE_BAR_MAX));
+    lv_obj_set_style_bg_color(t->bar_fill, lv_color_hex(color), 0);
 }
 
 lv_obj_t *scan_tile_get_obj(scan_tile_t *t) {
