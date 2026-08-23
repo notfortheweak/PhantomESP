@@ -3,6 +3,7 @@
 #include "core/utils.h"
 #include "managers/sd_card_manager.h"
 #include "managers/settings_manager.h"
+#include "managers/display_manager.h"
 #include "gui/toast.h"
 #include <stdarg.h>
 #include <stdlib.h>
@@ -209,5 +210,6 @@ void scan_file_close(scan_file_t *sf) {
     if (saved) {
         printf("Scan file saved\n");
         toast_show("Scan saved", TOAST_SUCCESS);
+        display_manager_signal_scan_saved();   // blink the SD icon red
     }
 }

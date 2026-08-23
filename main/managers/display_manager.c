@@ -215,6 +215,16 @@ lv_obj_t *sd_label = NULL;
 lv_obj_t *battery_label = NULL;
 lv_obj_t *mainlabel = NULL;
 
+// Status-icon activity flashes. Triggers are bumped from any task (scan/SD) and
+// consumed on the LVGL task by status_blink_cb, which briefly blinks the icon
+// (BT blue on a new BLE detection, SD red on a scan save) the same way the WiFi
+// icon lights up. flash_ticks are touched only on the LVGL task.
+static volatile uint32_t s_bt_evt_count = 0;
+static volatile uint32_t s_sd_evt_count = 0;
+static int s_bt_flash_ticks = 0;
+static int s_sd_flash_ticks = 0;
+static lv_timer_t *status_blink_timer = NULL;
+
 View *display_manager_previous_view = NULL;
 static View *s_lockscreen_return_view = NULL;
 
@@ -1158,10 +1168,10 @@ void update_status_bar(bool wifi_enabled, bool bt_enabled, bool sd_card_mounted,
       lv_obj_set_style_text_color(battery_label, amber_color, 0);
     }
   } else {
-    if (bt_label && lv_obj_is_valid(bt_label)) {
+    if (bt_label && lv_obj_is_valid(bt_label) && s_bt_flash_ticks == 0) {
       lv_obj_set_style_text_color(bt_label, default_color, 0);
     }
-    if (sd_label && lv_obj_is_valid(sd_label)) {
+    if (sd_label && lv_obj_is_valid(sd_label) && s_sd_flash_ticks == 0) {
       lv_obj_set_style_text_color(sd_label, default_color, 0);
     }
     if (battery_label && lv_obj_is_valid(battery_label)) {
@@ -1208,6 +1218,42 @@ static void status_update_cb(lv_timer_t *timer) {
 
 }
 
+// Thread-safe activity signals: callable from any task (scan scheduler, SD saver).
+// They only bump a counter — no LVGL access here — so they are safe off the LVGL
+// task. The blink itself happens on the LVGL task in status_blink_cb.
+void display_manager_signal_ble_detection(void) { s_bt_evt_count++; }
+void display_manager_signal_scan_saved(void)    { s_sd_evt_count++; }
+
+// Icon flash driver (LVGL task). A new event arms ICON_FLASH_HALF_CYCLES of
+// on/off toggling; when it drains, the icon is restored to its idle color.
+#define ICON_FLASH_HALF_CYCLES 6   /* ~6 * 150ms of blinking per event */
+static void status_blink_cb(lv_timer_t *timer) {
+  (void)timer;
+  if (!status_bar || !lv_obj_is_valid(status_bar)) return;
+  if (is_backlight_off) return;
+
+  static uint32_t bt_seen = 0, sd_seen = 0;
+  uint8_t theme = settings_get_menu_theme(&G_Settings);
+  lv_color_t idle = lv_color_hex(theme_palette_get_text_muted(theme));
+
+  uint32_t b = s_bt_evt_count, s = s_sd_evt_count;
+  if (b != bt_seen) { bt_seen = b; s_bt_flash_ticks = ICON_FLASH_HALF_CYCLES; }
+  if (s != sd_seen) { sd_seen = s; s_sd_flash_ticks = ICON_FLASH_HALF_CYCLES; }
+
+  if (s_bt_flash_ticks > 0 && bt_label && lv_obj_is_valid(bt_label) &&
+      !lv_obj_has_flag(bt_label, LV_OBJ_FLAG_HIDDEN)) {
+    bool on = (s_bt_flash_ticks & 1);
+    lv_obj_set_style_text_color(bt_label, on ? lv_color_hex(0x3B82F6) : idle, 0);
+    if (--s_bt_flash_ticks == 0) lv_obj_set_style_text_color(bt_label, idle, 0);
+  }
+  if (s_sd_flash_ticks > 0 && sd_label && lv_obj_is_valid(sd_label) &&
+      !lv_obj_has_flag(sd_label, LV_OBJ_FLAG_HIDDEN)) {
+    bool on = (s_sd_flash_ticks & 1);
+    lv_obj_set_style_text_color(sd_label, on ? lv_color_hex(0xEF4444) : idle, 0);
+    if (--s_sd_flash_ticks == 0) lv_obj_set_style_text_color(sd_label, idle, 0);
+  }
+}
+
 void display_manager_update_status_bar_color(void) {
   if (!status_bar || !lv_obj_is_valid(status_bar)) {
     return;
@@ -1229,10 +1275,10 @@ void display_manager_update_status_bar_color(void) {
   if (wifi_label && lv_obj_is_valid(wifi_label)) {
     lv_obj_set_style_text_color(wifi_label, text_color, 0);
   }
-  if (bt_label && lv_obj_is_valid(bt_label)) {
+  if (bt_label && lv_obj_is_valid(bt_label) && s_bt_flash_ticks == 0) {
     lv_obj_set_style_text_color(bt_label, text_color, 0);
   }
-  if (sd_label && lv_obj_is_valid(sd_label)) {
+  if (sd_label && lv_obj_is_valid(sd_label) && s_sd_flash_ticks == 0) {
     lv_obj_set_style_text_color(sd_label, text_color, 0);
   }
   if (battery_label && lv_obj_is_valid(battery_label)) {
@@ -1339,6 +1385,9 @@ void display_manager_add_status_bar(const char *CurrentMenuName) {
   if (!status_timer_initialized) {
     status_update_timer = lv_timer_create(status_update_cb, 500, NULL);
     status_timer_initialized = true;
+  }
+  if (status_blink_timer == NULL) {
+    status_blink_timer = lv_timer_create(status_blink_cb, 150, NULL);
   }
 }
 

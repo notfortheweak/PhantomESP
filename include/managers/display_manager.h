@@ -197,6 +197,12 @@ lv_color_t hex_to_lv_color(const char *hex_str);
 void update_status_bar(bool wifi_enabled, bool bt_enabled, bool sd_card_mounted, int batteryPercentage, bool power_save_enabled, bool is_ap_active, bool is_charging);
 
 void display_manager_add_status_bar(const char *CurrentMenuName);
+
+// Status-icon activity flashes. Callable from any task (they only bump a counter):
+// blink the Bluetooth icon blue on a new BLE detection, the SD icon red on a save.
+void display_manager_signal_ble_detection(void);
+void display_manager_signal_scan_saved(void);
+
 void display_manager_raise_status_bar(void);
 void display_manager_restore_status_bar(void);
 

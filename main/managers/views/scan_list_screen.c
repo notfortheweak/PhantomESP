@@ -65,7 +65,14 @@ static bool s_touch_started, s_touch_dragged;
 static int s_sx, s_sy, s_lx, s_ly;
 
 static lv_obj_t *make_row(int idx) {
+    // Every LVGL allocation below can return NULL when the (small, no-PSRAM)
+    // LVGL heap is exhausted — a busy list can request ~5 objects * MAX_ROWS.
+    // Bail out cleanly on the first failure instead of letting LVGL dereference
+    // a NULL object (which crashed the LVGL task in scan_list_create -> make_row).
+    s_row_title[idx] = s_row_sub[idx] = s_row_rssi[idx] = NULL;
+
     lv_obj_t *row = lv_obj_create(s_list_cont);
+    if (!row) return NULL;
     lv_obj_set_width(row, LV_PCT(100));
     lv_obj_set_height(row, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_color(row, lv_color_hex(c_surface), 0);
@@ -80,6 +87,7 @@ static lv_obj_t *make_row(int idx) {
                           LV_FLEX_ALIGN_CENTER);
 
     lv_obj_t *left = lv_obj_create(row);
+    if (!left) { lv_obj_del(row); return NULL; }
     lv_obj_remove_style_all(left);
     lv_obj_set_flex_grow(left, 1);
     lv_obj_set_height(left, LV_SIZE_CONTENT);
@@ -87,15 +95,18 @@ static lv_obj_t *make_row(int idx) {
     lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
 
     s_row_title[idx] = lv_label_create(left);
+    if (!s_row_title[idx]) { lv_obj_del(row); s_row_title[idx] = NULL; return NULL; }
     lv_label_set_long_mode(s_row_title[idx], LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_row_title[idx], LV_PCT(100));
 
     s_row_sub[idx] = lv_label_create(left);
+    if (!s_row_sub[idx]) { lv_obj_del(row); s_row_title[idx] = s_row_sub[idx] = NULL; return NULL; }
     lv_obj_set_style_text_color(s_row_sub[idx], lv_color_hex(c_dim), 0);
     lv_label_set_long_mode(s_row_sub[idx], LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_row_sub[idx], LV_PCT(100));
 
     s_row_rssi[idx] = lv_label_create(row);
+    if (!s_row_rssi[idx]) { lv_obj_del(row); s_row_title[idx] = s_row_sub[idx] = s_row_rssi[idx] = NULL; return NULL; }
     lv_label_set_text(s_row_rssi[idx], "");
     return row;
 }
@@ -111,7 +122,17 @@ static void list_refresh(lv_timer_t *t) {
     }
 
     for (int i = 0; i < s_nrows; i++) {
-        if (!s_rows[i]) s_rows[i] = make_row(i);
+        if (!s_rows[i]) {
+            // A row is ~5 objects+styles out of LVGL's small (20KB) builtin pool.
+            // lv_*_create() returns NULL when the pool is exhausted and LVGL then
+            // dereferences it (this crashed the LVGL task here). Refuse to build a
+            // row unless the pool can safely fit one, and render what already fits.
+            lv_mem_monitor_t mon;
+            lv_mem_monitor(&mon);
+            if (mon.free_size < 3072 || mon.free_biggest_size < 1024) { s_nrows = i; break; }
+            s_rows[i] = make_row(i);
+            if (!s_rows[i]) { s_nrows = i; break; }
+        }
         bool act = s_rowactive[i];
         lv_obj_set_style_bg_opa(s_rows[i], act ? LV_OPA_COVER : LV_OPA_40, 0);
         lv_label_set_text(s_row_title[i], s_rowsig[i].title[0] ? s_rowsig[i].title : "?");

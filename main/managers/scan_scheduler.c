@@ -14,6 +14,7 @@
 #include "core/system_manager.h"   // xTaskCreate_psram
 #include "core/callbacks.h"        // start/stop_pineap_detection
 #include "gui/scan_report.h"       // scan_report_accumulate + SCAT_*
+#include "managers/display_manager.h" // display_manager_signal_ble_detection
 #include "managers/wifi_manager.h"
 #include "managers/flock_detector_manager.h"
 #include "managers/aerial_detector_manager.h"
@@ -38,6 +39,19 @@ static TaskHandle_t  s_task = NULL;
 
 #define PHASE_DELAY()   vTaskDelay(pdMS_TO_TICKS(SCAN_PHASE_DWELL_MS))
 #define GAP_DELAY()     vTaskDelay(pdMS_TO_TICKS(SCAN_GAP_MS))
+
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+// Accumulate a BLE-family category and blink the Bluetooth icon blue whenever a
+// new device is added to the session log (a flipper/airtag/BLE device detected
+// and logged). total_count is monotonic per session, so a rise == a new device.
+static void accumulate_ble(scan_category_id_t cat) {
+    int before = scan_report_total_count(cat);
+    scan_report_accumulate(cat);
+    if (scan_report_total_count(cat) > before) {
+        display_manager_signal_ble_detection();
+    }
+}
+#endif
 
 // Run one category's scan window, then snapshot it into the session accumulator.
 static void run_phase(scan_category_id_t cat) {
@@ -88,21 +102,21 @@ static void run_phase(scan_category_id_t cat) {
     case SCAT_FLIPPERS:
         flipper_scan_start();
         PHASE_DELAY();
-        scan_report_accumulate(SCAT_FLIPPERS);
+        accumulate_ble(SCAT_FLIPPERS);
         flipper_scan_stop();
         GAP_DELAY();
         break;
     case SCAT_AIRTAGS:
         airtag_scan_start();
         PHASE_DELAY();
-        scan_report_accumulate(SCAT_AIRTAGS);
+        accumulate_ble(SCAT_AIRTAGS);
         airtag_scan_stop();
         GAP_DELAY();
         break;
     case SCAT_BLE:
         ble_device_detect_start();
         PHASE_DELAY();
-        scan_report_accumulate(SCAT_BLE);
+        accumulate_ble(SCAT_BLE);
         ble_device_detect_stop();
         GAP_DELAY();
         break;
