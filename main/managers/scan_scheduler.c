@@ -5,7 +5,6 @@
 
 #include "sdkconfig.h"
 #include "esp_log.h"
-#include "esp_heap_caps.h"        // heap_caps_check_integrity_all (diagnostic)
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -38,17 +37,6 @@ static TaskHandle_t s_task = NULL;
 #define STOP_OR_BREAK() do { if (!s_run) goto done; } while (0)
 #define PHASE_DELAY()   vTaskDelay(pdMS_TO_TICKS(SCAN_PHASE_DWELL_MS))
 #define GAP_DELAY()     vTaskDelay(pdMS_TO_TICKS(SCAN_GAP_MS))
-
-// DIAGNOSTIC (temporary): after each phase, walk the whole heap. The first
-// phase after which this logs "HEAP CORRUPT" is the corruptor. Paired with
-// CONFIG_HEAP_POISONING_COMPREHENSIVE it catches overflows near their source.
-#define HEAPCHK(name) do { \
-    if (!heap_caps_check_integrity_all(true)) { \
-        ESP_LOGE(TAG, "HEAP CORRUPT after phase: %s", (name)); \
-    } else { \
-        ESP_LOGW(TAG, "heap ok after: %s", (name)); \
-    } \
-} while (0)
 
 static void scan_scheduler_task(void *arg) {
     (void)arg;
@@ -83,35 +71,30 @@ static void scan_scheduler_task(void *arg) {
             ap_scan_finish_async();
         }
         GAP_DELAY();
-        HEAPCHK("apscan");
 
         STOP_OR_BREAK();
         wifi_manager_start_station_scan();
         PHASE_DELAY();
         wifi_manager_stop_monitor_mode();
         GAP_DELAY();
-        HEAPCHK("station");
 
         STOP_OR_BREAK();
         start_pineap_detection();
         PHASE_DELAY();
         stop_pineap_detection();
         GAP_DELAY();
-        HEAPCHK("pineap");
 
         STOP_OR_BREAK();
         (void)aerial_detector_start_scan(SCAN_PHASE_DWELL_MS);
         PHASE_DELAY();
         (void)aerial_detector_stop_scan();
         GAP_DELAY();
-        HEAPCHK("aerial");
 
         STOP_OR_BREAK();
         (void)flock_detector_start();
         PHASE_DELAY();
         (void)flock_detector_stop();
         GAP_DELAY();
-        HEAPCHK("flock");
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
         // ---- BLE phases (shared BLE radio) ----
@@ -120,21 +103,18 @@ static void scan_scheduler_task(void *arg) {
         PHASE_DELAY();
         flipper_scan_stop();
         GAP_DELAY();
-        HEAPCHK("flipper");
 
         STOP_OR_BREAK();
         airtag_scan_start();
         PHASE_DELAY();
         airtag_scan_stop();
         GAP_DELAY();
-        HEAPCHK("airtag");
 
         STOP_OR_BREAK();
         ble_device_detect_start();
         PHASE_DELAY();
         ble_device_detect_stop();
         GAP_DELAY();
-        HEAPCHK("ble_detect");
 #endif
     }
 

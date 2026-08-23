@@ -35,6 +35,11 @@ void start_pineap_detection(void);
 void stop_pineap_detection(void);
 // Number of suspected PineAP/rogue networks detected in the current session.
 int pineap_get_detected_count(void);
+// Read a detected PineAP/rogue network by index (only valid while detection is
+// active). Returns 0 on success, -1 if unavailable/out of range.
+int pineap_get_network_data(int index, uint8_t *bssid, int *ssid_count,
+                            int8_t *rssi, int8_t *channel,
+                            char *ssid, size_t ssid_len);
 
 // Wardriving channel hopping control functions
 bool start_wardriving(void);

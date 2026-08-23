@@ -712,6 +712,17 @@ void wifi_manager_start_monitor_mode(wifi_promiscuous_cb_t_t callback) {
     wifi_monitor_capture_active = true;
     wifi_reconnect_reset();
 
+    // A previous consumer (e.g. the aerial detector) may have called
+    // esp_wifi_deinit(), leaving the driver uninitialized. Re-init it here
+    // rather than letting ESP_ERROR_CHECK abort on ESP_ERR_WIFI_NOT_INIT — this
+    // mirrors the recovery ap_scan already performs, and keeps the multi-radio
+    // scan scheduler from crashing when it chains monitor-mode after aerial.
+    wifi_mode_t cur_mode;
+    if (esp_wifi_get_mode(&cur_mode) == ESP_ERR_WIFI_NOT_INIT) {
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    }
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
 

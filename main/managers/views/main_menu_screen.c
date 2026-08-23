@@ -7,6 +7,7 @@
 #include "managers/settings_manager.h"
 #include "gui/accessibility_fonts.h"
 #include "gui/asset_pack.h"
+#include "managers/views/scan_dashboard_screen.h"
 #include "gui/theme_palette_api.h"
 #include "gui/design_tokens.h"
 #include "gui/gui_anim.h"
@@ -153,6 +154,7 @@ typedef struct {
 
 // Define colors as compile-time constants
 menu_item_t menu_items[] = {
+    {"Live Scan", "ghost", &ghost, 1, {{0}}}, // auto-scan threat dashboard
     {"Detect", "ghost", &ghost, 1, {{0}}}, // detection hub (top priority)
     {"Scan & Analyze", "wifi", &wifi, 1, {{0}}}, // WiFi scan & analyze tools
     {"GPS", "Map", &Map, 2, {{0}}},
@@ -972,6 +974,7 @@ static void handle_menu_item_selection(int item_index) {
     } menu_action_t;
 
     static const menu_action_t menu_actions[] = {
+        {"Live Scan", 0, &scan_dashboard_view},
         {"Detect", OT_Detect, &options_menu_view},
         {"Scan & Analyze", OT_Wifi, &options_menu_view},
         {"GPS", OT_GPS, &options_menu_view},

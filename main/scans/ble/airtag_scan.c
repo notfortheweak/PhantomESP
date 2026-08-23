@@ -259,6 +259,13 @@ int airtag_scan_get_count(void) {
     return discovered_airtag_count;
 }
 
+int airtag_scan_get_device_data(int index, uint8_t *mac, int8_t *rssi) {
+    if (index < 0 || index >= discovered_airtag_count) return -1;
+    if (mac) memcpy(mac, discovered_airtags[index].addr.val, 6);
+    if (rssi) *rssi = discovered_airtags[index].rssi;
+    return 0;
+}
+
 /**
  * @brief Print the list of discovered AirTag devices
  */

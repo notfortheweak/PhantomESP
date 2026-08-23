@@ -39,6 +39,12 @@ void airtag_scan_stop(void);
 int airtag_scan_get_count(void);
 
 /**
+ * @brief Read a discovered AirTag's MAC and RSSI by index.
+ * @return 0 on success, -1 if index is out of range.
+ */
+int airtag_scan_get_device_data(int index, uint8_t *mac, int8_t *rssi);
+
+/**
  * @brief Print the list of discovered AirTag devices
  * 
  * Outputs the MAC address and RSSI of each discovered AirTag.

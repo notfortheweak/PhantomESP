@@ -1890,6 +1890,27 @@ int pineap_get_detected_count(void) {
     return pineap_detection_active ? pineap_network_count : pineap_last_count;
 }
 
+int pineap_get_network_data(int index, uint8_t *bssid, int *ssid_count,
+                            int8_t *rssi, int8_t *channel,
+                            char *ssid, size_t ssid_len) {
+    // Tables exist only while detection is active; callers snapshot during the
+    // active window (the network list is freed between scheduler phases).
+    if (!pineap_detection_active || pineap_networks == NULL ||
+        index < 0 || index >= pineap_network_count) {
+        return -1;
+    }
+    pineap_network_t *n = &pineap_networks[index];
+    if (bssid) memcpy(bssid, n->bssid, 6);
+    if (ssid_count) *ssid_count = n->ssid_count;
+    if (rssi) *rssi = n->last_rssi;
+    if (channel) *channel = n->last_channel;
+    if (ssid && ssid_len) {
+        int idx = (n->recent_ssid_index + RECENT_SSID_COUNT - 1) % RECENT_SSID_COUNT;
+        snprintf(ssid, ssid_len, "%s", n->recent_ssids[idx]);
+    }
+    return 0;
+}
+
 void wardriving_register_stream_handler(void) {
     // GhostLink peer streaming removed; kept as a no-op for main.c's boot call.
 }
