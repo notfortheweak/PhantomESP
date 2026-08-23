@@ -237,6 +237,26 @@ void scan_report_reset_session(void) {
     s_ap_id_n = 0;   // restart AP numbering
 }
 
+// Two observations are the same device when their kind-appropriate UNIQUE key
+// matches. APs are unique by BSSID (addr), not SSID (title) — keying by SSID
+// collapses same-SSID or "(hidden)" APs into one row, which strands the AP#N a
+// station references by BSSID. Stations are unique by their own MAC (title, since
+// a station row's addr is the *shared* associated-AP BSSID). Everything else is
+// unique by MAC (addr) when present, else by name (title).
+static bool same_signal(const seen_t *e, const scan_sig_t *sig) {
+    if (e->kind != sig->kind) return false;
+    switch (sig->kind) {
+    case SKIND_AP:
+        return strncmp(e->addr, sig->addr, sizeof(e->addr)) == 0;
+    case SKIND_STATION:
+        return strncmp(e->title, sig->title, sizeof(e->title)) == 0;
+    default:
+        if (sig->addr[0])
+            return strncmp(e->addr, sig->addr, sizeof(e->addr)) == 0;
+        return strncmp(e->title, sig->title, sizeof(e->title)) == 0;
+    }
+}
+
 void scan_report_accumulate(scan_category_id_t id) {
     const scan_category_t *cat = scan_report_category(id);
     if (!cat || !cat->count || !cat->get) return;
@@ -250,7 +270,7 @@ void scan_report_accumulate(scan_category_id_t id) {
         if (!cat->get(i, &sig)) continue;
         int f = -1;
         for (int j = 0; j < s_seen_n[id]; j++) {
-            if (strncmp(s_seen[id][j].title, sig.title, sizeof(sig.title)) == 0) { f = j; break; }
+            if (same_signal(&s_seen[id][j], &sig)) { f = j; break; }
         }
         if (f < 0) {
             if (s_seen_n[id] >= SEEN_MAX) continue;
