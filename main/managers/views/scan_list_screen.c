@@ -16,7 +16,7 @@
 #include "managers/settings_manager.h"
 #include "managers/views/scan_dashboard_screen.h"
 
-#define MAX_ROWS 24
+#define MAX_ROWS 12   // >= scan_report SEEN_MAX; caps list rows
 
 static scan_category_id_t s_category = SCAT_WIFI;
 static scan_sig_t s_selected_sig;   // copied on tap for the detail view

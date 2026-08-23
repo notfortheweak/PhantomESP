@@ -189,7 +189,9 @@ const scan_category_t *scan_report_category(scan_category_id_t id) {
 // ---------------------------------------------------------------------------
 // Session accumulator (compact; UI reads this, scheduler writes it)
 // ---------------------------------------------------------------------------
-#define SEEN_MAX 16
+// Per-category depth. Capped low: the CYD has no PSRAM, so this static array
+// competes with internal heap that WiFi/BLE/LVGL allocate from at runtime.
+#define SEEN_MAX 10
 
 typedef struct {
     char        title[34];

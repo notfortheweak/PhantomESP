@@ -8,6 +8,7 @@
 
 #include "sdkconfig.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"        // heap headroom probe (temporary diagnostic)
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -126,6 +127,9 @@ static void scan_scheduler_task(void *arg) {
     aerial_detector_enable_network_detection(false);
 
     while (s_run) {
+        ESP_LOGW(TAG, "heap free_int=%u largest_int=%u",
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
         int focus = s_focus;
         if (focus >= 0 && focus < SCAT_COUNT) {
             run_phase((scan_category_id_t)focus);
