@@ -29,6 +29,8 @@
 #endif
 #include <esp_log.h>
 #include "esp_random.h"
+#include "esp_mac.h"            // esp_base_mac_addr_set()
+#include "bootloader_random.h"  // bootloader_random_enable/disable() for pre-RF entropy
 #include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
@@ -630,9 +632,36 @@ static void deferred_sd_init_task(void *arg) {
     vTaskDelete(NULL);
 }
 
+// Generate a fresh random base MAC on every boot so the device never emits its real
+// eFuse-derived hardware MAC over the air (WiFi probe requests, SoftAP beacons, BLE scan
+// requests). ESP-IDF derives all interface MACs from this base: WiFi-STA = base,
+// SoftAP = base+1, Bluetooth = base+2 — so this one call covers every radio. Must run
+// before any radio init or esp_read_mac(); the eFuse MAC itself is never touched.
+static void randomize_base_mac(void) {
+    uint8_t mac[6];
+
+    // WiFi/BT are still off this early, so esp_random() isn't guaranteed true-random yet.
+    // Enable the bootloader's SAR-ADC entropy source just for the draw, then disable it
+    // again before WiFi/ADC come up (they share that path).
+    bootloader_random_enable();
+    esp_fill_random(mac, sizeof(mac));
+    bootloader_random_disable();
+
+    // Make it a valid locally-administered unicast address: clear the multicast bit (bit 0)
+    // and set the locally-administered bit (bit 1). Prevents collision with real vendor OUIs.
+    mac[0] = (mac[0] & 0xFE) | 0x02;
+
+    esp_base_mac_addr_set(mac);
+    ESP_LOGI(TAG, "randomize_base_mac: base MAC set to %02x:%02x:%02x:%02x:%02x:%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
 void app_main(void) {
     memory_debug_init();
     memory_debug_start_boot_trace();
+
+    // Anti-leak: randomize WiFi + Bluetooth MAC before any radio initializes.
+    randomize_base_mac();
 
 #if defined(CONFIG_USING_SPI) && defined(CONFIG_SD_SPI_CS_PIN)
     /* Keep the card deselected before any shared-bus display/touch traffic. */
