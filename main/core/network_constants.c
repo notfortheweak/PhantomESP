@@ -313,10 +313,23 @@ const uint8_t PINEAPPLE_OUIS[][3] = {
 };
 const size_t PINEAPPLE_OUI_COUNT = sizeof(PINEAPPLE_OUIS) / sizeof(PINEAPPLE_OUIS[0]);
 
-// DJI drone OUIs for detection
+// DJI drone OUIs for detection.
+// All 10 OUIs IEEE-registered to "SZ DJI TECHNOLOGY CO.,LTD" (verified against the
+// IEEE registry / maclookup.app, Aug 2026). DJI assigns OUIs per-company, not per
+// product line, so these cover the Mini, Air, Mavic (and every other) DJI series.
+// (The former 0x5C,0xE8,0x83 entry was actually Huawei — removed to avoid flagging
+// common Huawei gear as a drone.)
 const uint8_t DJI_OUIS[][3] = {
-    {0x60, 0x60, 0x1F},  // DJI
-    {0x5C, 0xE8, 0x83},  // DJI
+    {0x04, 0xA8, 0x5A},  // SZ DJI Technology
+    {0x0C, 0x9A, 0xE6},  // SZ DJI Technology
+    {0x34, 0xD2, 0x62},  // SZ DJI Technology
+    {0x48, 0x1C, 0xB9},  // SZ DJI Technology
+    {0x4C, 0x43, 0xF6},  // SZ DJI Technology
+    {0x58, 0xB8, 0x58},  // SZ DJI Technology
+    {0x60, 0x60, 0x1F},  // SZ DJI Technology
+    {0x88, 0x29, 0x85},  // SZ DJI Technology
+    {0x8C, 0x58, 0x23},  // SZ DJI Technology
+    {0xE4, 0x7A, 0x2C},  // SZ DJI Technology
 };
 const size_t DJI_OUI_COUNT = sizeof(DJI_OUIS) / sizeof(DJI_OUIS[0]);
 

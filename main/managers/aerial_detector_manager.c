@@ -11,6 +11,7 @@
 #include "managers/aerial_detector_manager.h"
 #include "managers/ble_manager.h"
 #include "core/glog.h"
+#include "core/network_constants.h"   // is_dji_oui() + full DJI OUI table
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -215,51 +216,29 @@ void aerial_detector_deinit(void) {
 
 static void build_allowed_channels_list(void) {
     allowed_channel_count = 0;
-    
-    // get current wifi country configuration
+
+    // Always scan the FULL 2.4GHz band (channels 1-14). Non-overlapping 1/6/11
+    // first so the most common drone channels are hit early in each hop cycle;
+    // the rest follow. We deliberately ignore the WiFi country's channel count for
+    // 2.4GHz here — this is passive RX for drone detection, and start_wifi_phase
+    // sets a permissive country so esp_wifi_set_channel() accepts 12-14.
+    static const uint8_t ch_24ghz[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14};
+    for (size_t i = 0; i < sizeof(ch_24ghz) && allowed_channel_count < 45; i++) {
+        allowed_channels[allowed_channel_count++] = ch_24ghz[i];
+    }
+
+    #ifdef CONFIG_IDF_TARGET_ESP32C5
+    // 5GHz band (C5 only) is region-dependent; pick channels from the country.
     wifi_country_t country;
-    esp_err_t ret = esp_wifi_get_country(&country);
-    if (ret != ESP_OK) {
-        // default to common channels if country not set
-        ESP_LOGW(TAG, "wifi country not set, using default channels");
-        // 2.4ghz: channels 1, 6, 11 (common worldwide)
-        allowed_channels[allowed_channel_count++] = 1;
-        allowed_channels[allowed_channel_count++] = 6;
-        allowed_channels[allowed_channel_count++] = 11;
-        
-        #ifdef CONFIG_IDF_TARGET_ESP32C5
-        // 5ghz: common unii-1 channels
-        allowed_channels[allowed_channel_count++] = 36;
-        allowed_channels[allowed_channel_count++] = 40;
-        allowed_channels[allowed_channel_count++] = 44;
-        allowed_channels[allowed_channel_count++] = 48;
-        #endif
-        
-        ESP_LOGI(TAG, "using %d default channels", allowed_channel_count);
+    if (esp_wifi_get_country(&country) != ESP_OK) {
+        // default: unii-1 only (most permissive worldwide)
+        uint8_t default_5ghz[] = {36, 40, 44, 48};
+        for (int i = 0; i < (int)sizeof(default_5ghz) && allowed_channel_count < 50; i++) {
+            allowed_channels[allowed_channel_count++] = default_5ghz[i];
+        }
+        ESP_LOGI(TAG, "aerial channels: %d (2.4GHz 1-14 + default 5GHz)", allowed_channel_count);
         return;
     }
-    
-    // build channel list based on country regulations
-    // 2.4ghz band: channels 1-14 (varies by country)
-    uint8_t max_24ghz_channel = country.nchan;
-    if (max_24ghz_channel > 14) max_24ghz_channel = 14;
-    
-    // add 2.4ghz channels (prioritize 1, 6, 11 for non-overlapping)
-    for (uint8_t ch = 1; ch <= max_24ghz_channel; ch++) {
-        // add non-overlapping channels first
-        if (ch == 1 || ch == 6 || ch == 11) {
-            allowed_channels[allowed_channel_count++] = ch;
-        }
-    }
-    
-    // add overlapping 2.4ghz channels if needed
-    for (uint8_t ch = 2; ch <= max_24ghz_channel; ch++) {
-        if (ch != 1 && ch != 6 && ch != 11 && allowed_channel_count < 45) {
-            allowed_channels[allowed_channel_count++] = ch;
-        }
-    }
-    
-    #ifdef CONFIG_IDF_TARGET_ESP32C5
     // 5ghz band support for esp32-c5
     // add channels based on country code
     // unii-1 (5.15-5.25 ghz): channels 36, 40, 44, 48
@@ -300,8 +279,8 @@ static void build_allowed_channels_list(void) {
         }
     }
     #endif
-    
-    ESP_LOGI(TAG, "country %s: using %d channels (2.4ghz + 5ghz)", country.cc, allowed_channel_count);
+
+    ESP_LOGI(TAG, "aerial detector: scanning %d channels (full 2.4GHz 1-14)", allowed_channel_count);
 }
 
 static void channel_hop_callback(void *arg) {
@@ -342,7 +321,14 @@ static void start_wifi_phase(void) {
         esp_wifi_set_mode(WIFI_MODE_STA);
         esp_wifi_start();
     }
-    
+
+    // Permit the full 2.4GHz range for scanning: some regions (e.g. US nchan=11)
+    // otherwise make esp_wifi_set_channel() reject ch 12-14. Manual policy over
+    // channels 1-14 so every channel we hop is actually tunable for RX.
+    wifi_country_t scan_country = { .cc = "JP", .schan = 1, .nchan = 14,
+                                    .policy = WIFI_COUNTRY_POLICY_MANUAL };
+    esp_wifi_set_country(&scan_country);
+
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_promiscuous_rx_cb(&wifi_sniffer_callback);
     
@@ -351,10 +337,15 @@ static void start_wifi_phase(void) {
     };
     esp_wifi_set_promiscuous_filter(&filter);
     
-    // start on first channel
-    current_channel_index = 0;
+    // Resume hopping where the previous phase left off. A single DRONES phase
+    // (~2.5s at 300ms/hop) only visits ~8 channels; resetting to index 0 every
+    // phase meant channels past that (e.g. 2.4GHz ch 8-13 once a country adds the
+    // overlapping channels) were never scanned. Resuming lets successive phases
+    // eventually cover every channel so a drone isn't missed for being "late" in
+    // the list.
     if (allowed_channel_count > 0) {
-        esp_wifi_set_channel(allowed_channels[0], WIFI_SECOND_CHAN_NONE);
+        if (current_channel_index >= allowed_channel_count) current_channel_index = 0;
+        esp_wifi_set_channel(allowed_channels[current_channel_index], WIFI_SECOND_CHAN_NONE);
     } else {
         esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);  // fallback
     }
@@ -744,19 +735,14 @@ static void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type) {
         }
     }
     
-    // check for dji specific patterns
-    if (enable_dji) {
-        static const uint8_t dji_ouis[][3] = {{0x60, 0x60, 0x1F}, {0x5C, 0xE8, 0x83}};
-        for (int i = 0; i < 2; i++) {
-            if (memcmp(src_mac, dji_ouis[i], 3) == 0) {
-                ENSURE_DEVICE();
-                device->type = AERIAL_TYPE_DJI_WIFI;
-                snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "DJI");
-                decode_dji_message(device, payload, len);
-                detected = true;
-                break;
-            }
-        }
+    // check for dji specific patterns — match the transmitter MAC against the
+    // full set of DJI-registered OUIs (Mini/Air/Mavic/etc.), not a hardcoded pair.
+    if (enable_dji && is_dji_oui(src_mac)) {
+        ENSURE_DEVICE();
+        device->type = AERIAL_TYPE_DJI_WIFI;
+        snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "DJI");
+        decode_dji_message(device, payload, len);
+        detected = true;
     }
     
     // check for drone network ssids (beacon frames)
