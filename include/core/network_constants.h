@@ -59,6 +59,12 @@ extern const size_t LIVE_AP_CHANNELS_2GHZ_COUNT;
 extern const uint8_t LIVE_AP_CHANNELS_DUAL[];
 extern const size_t LIVE_AP_CHANNELS_DUAL_COUNT;
 
+// Full 2.4 GHz band (channels 1-14) in scan-priority order: the non-overlapping
+// channels 1/6/11 first, then the rest. Shared by the drone scan and the WiFi
+// AP/station scans so they all cover the same channels in the same order.
+extern const uint8_t WIFI_CHANNELS_2GHZ_ORDER[];
+extern const size_t WIFI_CHANNELS_2GHZ_ORDER_COUNT;
+
 // ============================================================================
 // OUI (ORGANIZATIONALLY UNIQUE IDENTIFIER) DEFINITIONS
 // ============================================================================
