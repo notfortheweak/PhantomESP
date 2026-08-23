@@ -28,7 +28,7 @@
 #include "esp_netif.h"
 
 #define WIGLE_UPLOAD_URL "https://api.wigle.net/api/v2/file/upload"
-#define WIGLE_BOUNDARY "------------------------GhostESP"
+#define WIGLE_BOUNDARY "------------------------PhantomESP"
 #define WIGLE_UPLOADED_FILE "/mnt/ghostesp/.wigle_uploaded"
 #define WIGLE_QUEUE_FILE "/mnt/ghostesp/.wigle_queue"
 /* Max queue entries processed per connect; kept small to limit RAM. */
@@ -280,16 +280,16 @@ static bool wigle_file_has_data_rows(FILE *f) {
  * Upload a single CSV file to WiGLE API.
  *
  * Multipart structure:
- *   --------------------------GhostESP\r\n
+ *   --------------------------PhantomESP\r\n
  *   Content-Disposition: form-data; name="file"; filename="test.csv"\r\n
  *   Content-Type: text/csv\r\n\r\n
  *   [file content]
- *   \r\n--------------------------GhostESP\r\n
+ *   \r\n--------------------------PhantomESP\r\n
  *   Content-Disposition: form-data; name="donate"\r\n\r\n
  *   true\r\n
- *   --------------------------GhostESP--\r\n
+ *   --------------------------PhantomESP--\r\n
  *
- * Content-Type header: multipart/form-data; boundary=------------------------GhostESP
+ * Content-Type header: multipart/form-data; boundary=------------------------PhantomESP
  * Note: boundary in header has NO dashes, body boundaries have "--" prefix
  */
 static esp_err_t wigle_upload_file(const char *filepath, const char *api_key) {
@@ -407,7 +407,7 @@ static esp_err_t wigle_upload_file(const char *filepath, const char *api_key) {
     }
 
     esp_http_client_set_header(client, "Accept", "application/json");
-    esp_http_client_set_header(client, "User-Agent", "GhostESP/1.0");
+    esp_http_client_set_header(client, "User-Agent", "PhantomESP/1.0");
     esp_http_client_set_header(client, "Authorization", auth_val);
     esp_http_client_set_header(client, "Content-Type", content_type_hdr);
 
@@ -566,7 +566,7 @@ static esp_err_t wigle_upload_file_jit(const char *filepath, long fsize,
     if (!client) return ESP_FAIL;
 
     esp_http_client_set_header(client, "Accept",        "application/json");
-    esp_http_client_set_header(client, "User-Agent",    "GhostESP/1.0");
+    esp_http_client_set_header(client, "User-Agent",    "PhantomESP/1.0");
     esp_http_client_set_header(client, "Authorization", auth_val);
     esp_http_client_set_header(client, "Content-Type",  content_type_hdr);
 
@@ -1360,7 +1360,7 @@ esp_err_t wigle_get_stats(char *message, size_t message_len) {
     }
 
     esp_http_client_set_header(client, "Accept", "application/json");
-    esp_http_client_set_header(client, "User-Agent", "GhostESP/1.0");
+    esp_http_client_set_header(client, "User-Agent", "PhantomESP/1.0");
     esp_http_client_set_header(client, "Authorization", auth_val);
 
     esp_err_t err = esp_http_client_perform(client);
@@ -1568,7 +1568,7 @@ static void wigle_test_api_task(void *arg) {
     }
     
     esp_http_client_set_header(client, "Accept", "application/json");
-    esp_http_client_set_header(client, "User-Agent", "GhostESP/1.0");
+    esp_http_client_set_header(client, "User-Agent", "PhantomESP/1.0");
     esp_http_client_set_header(client, "Authorization", auth_val);
     
     esp_err_t err = esp_http_client_perform(client);

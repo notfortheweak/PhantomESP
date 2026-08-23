@@ -443,7 +443,7 @@ void handle_ping_cmd(int argc, char **argv) {
 void handle_version_cmd(int argc, char **argv) {
     (void)argc; (void)argv;
     const esp_app_desc_t *app = esp_app_get_description();
-    glog("%s %s (%s)\n", GHOSTESP_NAME, GHOSTESP_VERSION, GHOSTESP_FLAVOR);
+    glog("%s %s\n", GHOSTESP_NAME, GHOSTESP_VERSION);
     glog("Build: %s %s\n", __DATE__, __TIME__);
     glog("Git: %s @ %s\n", GIT_BRANCH, GIT_COMMIT_HASH);
     if (app) glog("App: %s\n", app->version);

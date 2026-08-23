@@ -119,7 +119,7 @@ int chip_info_collect_device_info(chip_info_line_t *out, int max) {
         n++;                                                                     \
     } while (0)
 
-    EMIT("Firmware",    "%s %s %s", GHOSTESP_NAME, GHOSTESP_FLAVOR, GHOSTESP_VERSION);
+    EMIT("Firmware",    "%s %s", GHOSTESP_NAME, GHOSTESP_VERSION);
 #ifdef GIT_COMMIT_HASH
     EMIT("Git Commit",  "%s", GIT_COMMIT_HASH);
 #endif
@@ -263,7 +263,7 @@ int chip_info_collect_cards(chip_info_card_t *out, int max) {
     if (n < max) {
         out[n].title = "Device";
         out[n].body[0] = '\0';
-        snprintf(value, sizeof(value), "%s %s %s", GHOSTESP_NAME, GHOSTESP_FLAVOR, GHOSTESP_VERSION);
+        snprintf(value, sizeof(value), "%s %s", GHOSTESP_NAME, GHOSTESP_VERSION);
         append_kv_line(out[n].body, sizeof(out[n].body), "Firmware", value);
 #ifdef GIT_COMMIT_HASH
         append_kv_line(out[n].body, sizeof(out[n].body), "Git Commit", GIT_COMMIT_HASH);

@@ -59,6 +59,9 @@
 
 #ifdef CONFIG_WITH_SCREEN
 #include "managers/views/splash_screen.h"
+#include "managers/views/scan_dashboard_screen.h"
+#include "managers/views/setup_wizard_screen.h"
+#include "managers/views/lockscreen.h"
 #include "managers/views/main_menu_screen.h"
 #include "managers/views/tdongle_status_screen.h"
 #include "gui/popup.h"
@@ -93,7 +96,7 @@ static void boot_status_set_progress(float pct, const char *label) {
         tdongle_status_show_status(label ? label : "Booting");
         return;
     }
-    splash_set_progress(pct, label);
+    (void)pct; (void)label;   // splash removed: boot straight to the destination view
 }
 
 static void boot_status_signal_completion(void) {
@@ -101,7 +104,7 @@ static void boot_status_signal_completion(void) {
         tdongle_status_show_status("Ready");
         return;
     }
-    splash_signal_completion();
+    // splash removed: nothing to signal — the destination view is already shown.
 }
 
 static void apply_main_menu_background_cb(void *arg) {
@@ -866,7 +869,18 @@ void app_main(void) {
     MEASURE_INIT_RAM("Display Manager", display_manager_init() );
     ESP_LOGI(TAG, "Presenting startup screen");
     bool startup_ready = false;
-    View *startup_view = &splash_view;
+    // Splash screen removed: boot straight to the destination view (this mirrors
+    // the routing the splash used to perform once boot work completed). Boot-time
+    // work (SD/asset pack, plugin discovery) still runs on its own tasks.
+    View *startup_view;
+    if (!settings_get_setup_complete(&G_Settings)) {
+        startup_view = &setup_wizard_view;
+    } else if (settings_get_lockscreen_enabled(&G_Settings)) {
+        lockscreen_reset_input();
+        startup_view = &lockscreen_view;
+    } else {
+        startup_view = &scan_dashboard_view;   // appliance mode: auto-boot Live Scan
+    }
 #ifdef CONFIG_BUILD_CONFIG_TEMPLATE
     if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "LilyGo T-Dongle-S3") == 0 ||
         strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "LilyGo T-Dongle-C5") == 0) {
@@ -1002,7 +1016,7 @@ void app_main(void) {
     }
 #endif
 
-    ESP_LOGI(TAG, "Ghost ESP INIT complete.");
+    ESP_LOGI(TAG, "PhantomESP INIT complete.");
     memory_debug_log_snapshot("app_main complete");
     esp_err_t mem_monitor_err = memory_debug_start_periodic_monitor();
     if (mem_monitor_err != ESP_OK) {

@@ -133,7 +133,7 @@ static const uint8_t configuration_descriptor[] = {
                        sizeof(hid_mouse_report_desc), EPNUM_HID_MOUSE, CFG_TUD_HID_EP_BUFSIZE, 10),
 };
 
-static char mfr_string[33] = "Ghost ESP";
+static char mfr_string[33] = "PhantomESP";
 static char prod_string[33] = "BadUSB HID";
 
 static const char *string_descriptors[] = {

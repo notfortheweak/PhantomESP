@@ -275,7 +275,7 @@ static void ble_suspend_networking(void) {
     }
 
     if (server_running) {
-        ESP_LOGI(TAG_BLE, "Suspending GhostNet AP before BLE init");
+        ESP_LOGI(TAG_BLE, "Suspending phantomnet AP before BLE init");
         TERMINAL_VIEW_ADD_TEXT("Suspending AP for BLE\n");
 #ifdef CONFIG_SPIRAM
         ap_manager_stop_services();
@@ -303,7 +303,7 @@ static void ble_suspend_networking(void) {
 
 static void ble_resume_networking(void) {
     if (ble_ap_suspended) {
-        ESP_LOGI(TAG_BLE, "Restoring GhostNet AP after BLE deinit");
+        ESP_LOGI(TAG_BLE, "Restoring phantomnet AP after BLE deinit");
         TERMINAL_VIEW_ADD_TEXT("Restoring AP after BLE\n");
         ble_ap_suspended = false;
         ble_prev_wifi_mode = WIFI_MODE_AP;

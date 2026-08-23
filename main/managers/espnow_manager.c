@@ -108,12 +108,12 @@ static void upsert_peer(const uint8_t mac[6], const char *name, int8_t rssi) {
     memcpy(s_peers[slot].mac, mac, sizeof(s_peers[slot].mac));
     s_peers[slot].rssi = rssi;
     s_peers[slot].last_seen_ms = seen;
-    snprintf(s_peers[slot].name, sizeof(s_peers[slot].name), "%s", name && name[0] ? name : "GhostESP");
+    snprintf(s_peers[slot].name, sizeof(s_peers[slot].name), "%s", name && name[0] ? name : "PhantomESP");
     portEXIT_CRITICAL(&s_lock);
     ESP_LOGI(TAG, "%s peer %02X:%02X:%02X:%02X:%02X:%02X name='%s' rssi=%d",
              existing ? "Updated" : "Discovered",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
-             name && name[0] ? name : "GhostESP", rssi);
+             name && name[0] ? name : "PhantomESP", rssi);
 }
 
 static void queue_message(const uint8_t sender_mac[6], const char *sender_name, const char *text) {

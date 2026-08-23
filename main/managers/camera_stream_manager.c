@@ -264,7 +264,7 @@ esp_err_t camera_stream_api_handler(httpd_req_t *req) {
 esp_err_t camera_stream_page_handler(httpd_req_t *req) {
     if (!ap_manager_webui_request_allowed(req)) return ESP_OK;
     const char *html =
-        "<!DOCTYPE html><html><head><title>GhostESP Camera</title>"
+        "<!DOCTYPE html><html><head><title>PhantomESP Camera</title>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<style>*{margin:0;padding:0;box-sizing:border-box}"
         "body{background:#111;color:#fff;font-family:'Courier New',monospace;"

@@ -573,7 +573,6 @@ static void ble_adv_set_subtext(int found_count) {
 uint32_t theme_palette_get_background(uint8_t theme);
 uint32_t theme_palette_get_surface_alt(uint8_t theme);
 uint32_t theme_palette_get_text(uint8_t theme);
-extern const lv_img_dsc_t ghostesplogo;
 
 
 #define KARMA_MAX_SSIDS 64
@@ -1145,16 +1144,11 @@ static void options_show_info_detail(void) {
     lv_obj_set_flex_flow(s_info_scroll, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(s_info_scroll, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_t *logo = lv_img_create(s_info_scroll);
-    lv_img_set_src(logo, &ghostesplogo);
-    lv_obj_set_style_img_recolor(logo, lv_color_white(), 0);
-    lv_obj_set_style_img_recolor_opa(logo, LV_OPA_0, 0);
-    lv_obj_set_style_pad_bottom(logo, GUI_GRID * 2, 0);
-    if (LV_HOR_RES <= 240 || LV_VER_RES <= 180) {
-        lv_img_set_zoom(logo, 180);
-    } else if (LV_HOR_RES <= 320) {
-        lv_img_set_zoom(logo, 220);
-    }
+    lv_obj_t *title = lv_label_create(s_info_scroll);
+    lv_label_set_text(title, "PhantomESP");
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_pad_bottom(title, GUI_GRID * 2, 0);
 
     bool small = (LV_VER_RES <= 180 || LV_HOR_RES <= 240);
     const lv_font_t *body_font = small ? &lv_font_montserrat_12 : &lv_font_montserrat_14;
@@ -1169,7 +1163,7 @@ static void options_show_info_detail(void) {
                                  heading_font, body_font, GUI_GRID * 2);
     }
 
-    options_info_add_section(s_info_scroll, "GhostESP Contributors", OPTIONS_INFO_CONTRIBUTORS,
+    options_info_add_section(s_info_scroll, "Contributors", OPTIONS_INFO_CONTRIBUTORS,
                              body_font, credits_font, GUI_GRID * 2);
     options_info_add_section(s_info_scroll, "Upstream & References", OPTIONS_INFO_UPSTREAM,
                              body_font, credits_font, GUI_GRID);

@@ -180,8 +180,8 @@ void settings_set_defaults(FSettings *settings) {
   settings->broadcast_speed = 5;
   // default to the 'Bright' palette (index 3)
   settings->menu_theme = 3;
-  strcpy(settings->ap_ssid, "GhostNet");
-  strcpy(settings->ap_password, "GhostNet");
+  strcpy(settings->ap_ssid, "phantomnet");
+  strcpy(settings->ap_password, "phantomnet");
   settings->rgb_speed = 15;
 
   // Evil Portal defaults

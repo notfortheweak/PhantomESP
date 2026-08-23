@@ -827,11 +827,11 @@ esp_err_t ap_manager_init(void) {
 
     const char *ssid = strlen(settings_get_ap_ssid(&G_Settings)) > 0
                            ? settings_get_ap_ssid(&G_Settings)
-                           : "GhostNet";
+                           : "phantomnet";
 
     const char *password = strlen(settings_get_ap_password(&G_Settings)) >= 8
                                ? settings_get_ap_password(&G_Settings)
-                               : "GhostNet";
+                               : "phantomnet";
 
     wifi_config_t wifi_config = {
         .ap =
@@ -1114,7 +1114,7 @@ bool ap_manager_webui_request_allowed(httpd_req_t *req) {
     if (!settings_get_web_auth_enabled(&G_Settings)) return true;
 
     const char *password = settings_get_ap_password(&G_Settings);
-    if (!password || strlen(password) < 8) password = "GhostNet";
+    if (!password || strlen(password) < 8) password = "phantomnet";
     if (webui_session_cookie_valid(req, password)) return true;
 
     char nonce[128] = {0};
@@ -1159,7 +1159,7 @@ static esp_err_t http_get_handler(httpd_req_t *req) {
     // attempt session cookie first
     const FSettings *settings_local = &G_Settings;
     const char *expected_password_local = settings_get_ap_password(settings_local);
-    if (!expected_password_local || strlen(expected_password_local) < 8) expected_password_local = "GhostNet";
+    if (!expected_password_local || strlen(expected_password_local) < 8) expected_password_local = "phantomnet";
 
     if (webui_session_cookie_valid(req, expected_password_local)) {
         return respond_with_site(req);
@@ -1171,7 +1171,7 @@ static esp_err_t http_get_handler(httpd_req_t *req) {
         // send Digest challenge
         const FSettings *settings = &G_Settings;
         const char *pwd = settings_get_ap_password(settings);
-        if (!pwd || strlen(pwd) < 8) pwd = "GhostNet";
+        if (!pwd || strlen(pwd) < 8) pwd = "phantomnet";
         char nonce[128] = {0};
         if (generate_stateless_nonce(pwd, strlen(pwd), nonce, sizeof(nonce)) != 0) {
             httpd_resp_set_status(req, "500 Internal Server Error");
@@ -1214,8 +1214,8 @@ static esp_err_t http_get_handler(httpd_req_t *req) {
             const FSettings *settings = &G_Settings;
             const char *expected_username = settings_get_ap_ssid(settings);
             const char *expected_password = settings_get_ap_password(settings);
-            if (expected_username == NULL || strlen(expected_username) == 0) expected_username = "GhostNet";
-            if (expected_password == NULL || strlen(expected_password) < 8) expected_password = "GhostNet";
+            if (expected_username == NULL || strlen(expected_username) == 0) expected_username = "phantomnet";
+            if (expected_password == NULL || strlen(expected_password) < 8) expected_password = "phantomnet";
 
             // quick username check
             if (strcmp(username, expected_username) != 0) {
@@ -1270,7 +1270,7 @@ digest_fail:
     // issue new Digest challenge
     const FSettings *settings = &G_Settings;
     const char *pwd = settings_get_ap_password(settings);
-    if (!pwd || strlen(pwd) < 8) pwd = "GhostNet";
+    if (!pwd || strlen(pwd) < 8) pwd = "phantomnet";
     char nonce2[128] = {0};
     generate_stateless_nonce(pwd, strlen(pwd), nonce2, sizeof(nonce2));
     char www2[256];
@@ -1878,14 +1878,14 @@ static esp_err_t setup_mdns(void) {
         return ret;
     }
 
-    ret = mdns_instance_name_set("GhostESP Web Interface");
+    ret = mdns_instance_name_set("PhantomESP Web Interface");
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "mdns_instance_name_set failed: %s", esp_err_to_name(ret));
     }
 
     mdns_txt_item_t serviceTxtData[] = {{"ip", "192.168.4.1"}, {"ipv4", "192.168.4.1"}};
 
-    ret = mdns_service_add("GhostESP", "_http", "_tcp", 80, serviceTxtData, 2);
+    ret = mdns_service_add("PhantomESP", "_http", "_tcp", 80, serviceTxtData, 2);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "mdns_service_add failed: %s", esp_err_to_name(ret));
         return ret;

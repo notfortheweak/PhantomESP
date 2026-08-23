@@ -37,8 +37,8 @@ void handle_apcred(int argc, char **argv) {
             return;
         }
 
-        printf("AP credentials reset to defaults (SSID: GhostNet, Password: GhostNet)\n");
-        TERMINAL_VIEW_ADD_TEXT("AP reset to defaults:\nSSID: GhostNet\nPSK: GhostNet\n");
+        printf("AP credentials reset to defaults (SSID: phantomnet, Password: phantomnet)\n");
+        TERMINAL_VIEW_ADD_TEXT("AP reset to defaults:\nSSID: phantomnet\nPSK: phantomnet\n");
         status_display_show_status("AP Reset");
         return;
     }

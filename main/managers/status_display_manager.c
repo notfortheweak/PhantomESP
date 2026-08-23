@@ -481,7 +481,7 @@ void status_display_init(void) {
     status_display_flush();
 
     s_ready = true;
-    status_display_sanitize(s_line1, sizeof(s_line1), "GhostESP: Revival");
+    status_display_sanitize(s_line1, sizeof(s_line1), "PhantomESP");
     status_display_sanitize(s_line2, sizeof(s_line2), "made with <3");
     status_display_render(s_line1, s_line2);
     // setup idle animation timer

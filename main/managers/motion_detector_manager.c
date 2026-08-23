@@ -31,7 +31,7 @@ static int frame_width = 0;
 static int frame_height = 0;
 static int prev_frame_len = 0;
 
-#define MOTION_DISCORD_BOUNDARY "----GhostESPMotion"
+#define MOTION_DISCORD_BOUNDARY "----PhantomESPMotion"
 #define JPEG_QUALITY 60
 #define DISCORD_UPLOAD_QUALITY 40
 #define MOTION_WARMUP_FRAMES 4
@@ -298,14 +298,14 @@ static void webhook_task(void *arg)
 static bool build_json_webhook_body(WebhookJob *job, float pct, int changed, int sampled, const char *snap)
 {
     static const char *embed_fmt =
-        "{\"username\":\"GhostESP Motion\",\"embeds\":[{"
+        "{\"username\":\"PhantomESP Motion\",\"embeds\":[{"
         "\"title\":\"Motion #%d\","
         "\"color\":16753920,"
         "\"fields\":["
         "{\"name\":\"Change\",\"value\":\"%.1f%%\",\"inline\":true},"
         "{\"name\":\"Pixels\",\"value\":\"%d/%d\",\"inline\":true},"
         "{\"name\":\"Snapshot\",\"value\":\"%s\",\"inline\":false}"
-        "],\"footer\":{\"text\":\"GhostESP\"}}]}";
+        "],\"footer\":{\"text\":\"PhantomESP\"}}]}";
 
     job->body_len = 512;
     job->body = heap_caps_malloc(job->body_len, MALLOC_CAP_SPIRAM);
@@ -340,7 +340,7 @@ static bool build_multipart_webhook_body(WebhookJob *job, camera_fb_t *fb, float
     }
 
     static const char *embed_fmt =
-        "{\"username\":\"GhostESP Motion\",\"embeds\":[{"
+        "{\"username\":\"PhantomESP Motion\",\"embeds\":[{"
         "\"title\":\"Motion #%d\","
         "\"color\":16753920,"
         "\"image\":{\"url\":\"attachment://motion.jpg\"},"
@@ -348,7 +348,7 @@ static bool build_multipart_webhook_body(WebhookJob *job, camera_fb_t *fb, float
         "{\"name\":\"Change\",\"value\":\"%.1f%%\",\"inline\":true},"
         "{\"name\":\"Pixels\",\"value\":\"%d/%d\",\"inline\":true},"
         "{\"name\":\"Snapshot\",\"value\":\"%s\",\"inline\":false}"
-        "],\"footer\":{\"text\":\"GhostESP\"}}]}";
+        "],\"footer\":{\"text\":\"PhantomESP\"}}]}";
 
     char payload[512];
     int pn = snprintf(payload, sizeof(payload), embed_fmt,
