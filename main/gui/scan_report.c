@@ -28,6 +28,25 @@
 
 static void set_mac(char *dst, size_t n, const uint8_t *m) { snprintf(dst, n, MAC6, MACB(m)); }
 
+// Session-stable AP IDs: each unique AP BSSID keeps the same "#N" all session,
+// so a station can reference its associated AP by a short, stable number.
+#define AP_ID_MAX 48
+static uint8_t s_ap_bssids[AP_ID_MAX][6];
+static int s_ap_id_n = 0;
+
+static int ap_id_lookup(const uint8_t *bssid) {
+    for (int i = 0; i < s_ap_id_n; i++)
+        if (memcmp(s_ap_bssids[i], bssid, 6) == 0) return i;
+    return -1;
+}
+static int ap_id_for(const uint8_t *bssid) {   // assign-or-get
+    int id = ap_id_lookup(bssid);
+    if (id >= 0) return id;
+    if (s_ap_id_n >= AP_ID_MAX) return -1;
+    memcpy(s_ap_bssids[s_ap_id_n], bssid, 6);
+    return s_ap_id_n++;
+}
+
 // ---------------------------------------------------------------------------
 // Live adapters
 // ---------------------------------------------------------------------------
@@ -54,9 +73,11 @@ static bool wifi_get(int i, scan_sig_t *o) {
         ap_scan_get_results(&n, &aps);
         if (!aps || i >= (int)n) return false;
         const wifi_ap_record_t *a = &aps[i];
+        int id = ap_id_for(a->bssid);
         snprintf(o->title, sizeof(o->title), "%s", a->ssid[0] ? (const char *)a->ssid : "(hidden)");
         set_mac(o->addr, sizeof(o->addr), a->bssid);
-        snprintf(o->sub, sizeof(o->sub), "AP  CH %d", a->primary);
+        if (id >= 0) snprintf(o->sub, sizeof(o->sub), "AP #%d  CH %d", id, a->primary);
+        else         snprintf(o->sub, sizeof(o->sub), "AP  CH %d", a->primary);
         o->rssi = a->rssi; o->has_rssi = true; o->kind = SKIND_AP;
         return true;
     }
@@ -65,10 +86,13 @@ static bool wifi_get(int i, scan_sig_t *o) {
     const station_ap_pair_t *st = &station_ap_list[s];
     char ap_ssid[33];
     bool have = resolve_ap_ssid(st->ap_bssid, ap_ssid, sizeof(ap_ssid));
+    int ap_id = ap_id_lookup(st->ap_bssid);   // AP already numbered this session?
     set_mac(o->title, sizeof(o->title), st->station_mac);
     set_mac(o->addr, sizeof(o->addr), st->ap_bssid);   // associated AP BSSID
-    if (have) snprintf(o->sub, sizeof(o->sub), "STA @ %.21s", ap_ssid);
-    else      snprintf(o->sub, sizeof(o->sub), "STA (assoc AP below)");
+    if (ap_id >= 0 && have) snprintf(o->sub, sizeof(o->sub), "STA->AP#%d %.13s", ap_id, ap_ssid);
+    else if (ap_id >= 0)    snprintf(o->sub, sizeof(o->sub), "STA->AP#%d", ap_id);
+    else if (have)          snprintf(o->sub, sizeof(o->sub), "STA-> %.20s", ap_ssid);
+    else                    snprintf(o->sub, sizeof(o->sub), "STA-> AP (unlisted)");
     o->has_rssi = false; o->kind = SKIND_STATION;
     return true;
 }
@@ -189,14 +213,15 @@ const scan_category_t *scan_report_category(scan_category_id_t id) {
 // ---------------------------------------------------------------------------
 // Session accumulator (compact; UI reads this, scheduler writes it)
 // ---------------------------------------------------------------------------
-// Per-category depth. Capped low: the CYD has no PSRAM, so this static array
-// competes with internal heap that WiFi/BLE/LVGL allocate from at runtime.
-#define SEEN_MAX 10
+// Per-category depth of the session list. This is static BSS (link-time), sized
+// to comfortably fit alongside runtime heap even on the no-PSRAM CYD (~42 KB
+// internal free measured with this in place).
+#define SEEN_MAX 20
 
 typedef struct {
     char        title[34];
     char        addr[20];
-    char        sub[28];
+    char        sub[36];
     int8_t      rssi;
     bool        has_rssi;
     scan_kind_t kind;
@@ -209,6 +234,7 @@ static int    s_seen_n[SCAT_COUNT];
 void scan_report_reset_session(void) {
     memset(s_seen, 0, sizeof(s_seen));
     memset(s_seen_n, 0, sizeof(s_seen_n));
+    s_ap_id_n = 0;   // restart AP numbering
 }
 
 void scan_report_accumulate(scan_category_id_t id) {
