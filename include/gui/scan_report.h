@@ -1,9 +1,9 @@
-// scan_report.h — category adapter layer for the Live Scan reporting UI.
+// scan_report.h — category adapter + session accumulator for the Live Scan UI.
 //
-// Bridges the volatile per-engine getters (ap_scan, aerial, flock, pineap,
-// flipper, airtag, ble_device_detect) to a normalized signal record the list
-// and detail views render. The views keep their own snapshot, so adapters only
-// need to expose "how many right now" + "fill signal i".
+// Adapters bridge the volatile per-engine getters to a normalized signal. The
+// accumulator remembers everything seen this session (active vs total) so the
+// dashboard and lists reflect what's around over a whole area, not just the
+// instant reading. The scan scheduler feeds it via scan_report_accumulate().
 #ifndef SCAN_REPORT_H
 #define SCAN_REPORT_H
 
@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 typedef enum {
-    SCAT_WIFI = 0,
+    SCAT_WIFI = 0,   // access points + associated stations
     SCAT_DRONES,
     SCAT_FLOCK,
     SCAT_PINEAP,
@@ -22,23 +22,48 @@ typedef enum {
     SCAT_COUNT
 } scan_category_id_t;
 
-// One normalized signal for display. `title` is the dedup key used by the
-// snapshot (SSID / MAC / name), so it must be stable for a given device.
+// Row "kind" drives list/row coloring (AP=blue, Station=red, others=default).
+typedef enum { SKIND_DEFAULT = 0, SKIND_AP, SKIND_STATION } scan_kind_t;
+
+// Row colors (0xRRGGBB). Chosen distinct from the severity palette
+// (green/amber/red) and the RSSI colors.
+#define SCAN_COLOR_AP      0x448AFF   // blue   — access points
+#define SCAN_COLOR_STATION 0xFF5252   // red    — stations
+#define SCAN_COLOR_TOTAL   0xB388FF   // purple — "total seen" counters
+
+// Compact record (no cached detail string — the detail view formats from these
+// fields, keeping the session accumulator small enough for no-PSRAM boards).
 typedef struct {
-    char   title[34];    // primary identifier
-    char   sub[28];      // secondary (vendor / type / method / channel)
-    char   detail[208];  // full multi-line detail text
-    int8_t rssi;
-    bool   has_rssi;
+    char        title[34];    // primary id / dedup key (SSID / device name / MAC)
+    char        addr[20];     // MAC / BSSID string ("" if none)
+    char        sub[28];      // secondary (type / assoc AP / channel / method)
+    int8_t      rssi;
+    bool        has_rssi;
+    scan_kind_t kind;
 } scan_sig_t;
 
 typedef struct {
     const char *name;                        // human label, e.g. "WiFi"
-    int  (*count)(void);                     // signals available right now
-    bool (*get)(int index, scan_sig_t *out); // fill signal `index`; false if gone
+    int  (*count)(void);                      // live signals right now
+    bool (*get)(int index, scan_sig_t *out);  // fill live signal `index`
 } scan_category_t;
 
-// Returns the adapter for `id`, or NULL if out of range.
 const scan_category_t *scan_report_category(scan_category_id_t id);
+
+// ---- session accumulator ----
+// Called by the scheduler right after a category's scan window (before the
+// engine frees its data). Marks currently-seen signals active, remembers new
+// ones as part of the running session total.
+void scan_report_accumulate(scan_category_id_t id);
+void scan_report_reset_session(void);          // forget everything (new session)
+
+int  scan_report_active_count(scan_category_id_t id);   // seen in latest scan
+int  scan_report_total_count(scan_category_id_t id);    // unique seen this session
+int  scan_report_kind_active(scan_category_id_t id, scan_kind_t kind);
+
+// Iterate the accumulated (session) list for a category — active first.
+// Fills `out` (detail regenerated live for active rows, summarized otherwise)
+// and sets *active. Returns false when `index` is past the end.
+bool scan_report_seen_get(scan_category_id_t id, int index, scan_sig_t *out, bool *active);
 
 #endif // SCAN_REPORT_H

@@ -1,7 +1,7 @@
-// scan_list_screen.c — see header. Two views: a live per-category signal list
-// and a single-signal detail screen. Touch arrives as InputEvents (the display
-// manager does not wire an LVGL indev), so taps are hit-tested on release and
-// drags are forwarded to the scroll container, mirroring main_menu_screen.
+// scan_list_screen.c — Live Scan drill-down. The list reads only the session
+// accumulator (scan_report_*), which the scheduler fills — so the LVGL task
+// never touches live engine data (no races). Rows are colored by kind
+// (AP=blue, Station=red) and dimmed once a signal is no longer present.
 #include "managers/views/scan_list_screen.h"
 
 #include "lvgl.h"
@@ -12,24 +12,22 @@
 #include "gui/screen_layout.h"
 #include "gui/theme_palette_api.h"
 #include "managers/display_manager.h"
+#include "managers/scan_scheduler.h"
 #include "managers/settings_manager.h"
 #include "managers/views/scan_dashboard_screen.h"
 
-#define SNAP_MAX 32
+#define MAX_ROWS 24
 
-// ---- shared selection state ----
 static scan_category_id_t s_category = SCAT_WIFI;
-static scan_sig_t s_snap[SNAP_MAX];
-static int s_snap_n = 0;
-static int s_selected = 0;
+static scan_sig_t s_selected_sig;   // copied on tap for the detail view
+static bool s_selected_active;
 
 void scan_list_set_category(scan_category_id_t category) {
     if (category >= 0 && category < SCAT_COUNT) s_category = category;
 }
 
-// ---- theme colors captured at create ----
+// theme colors captured at create
 static uint32_t c_bg, c_surface, c_text, c_dim, c_accent;
-
 static void capture_theme(void) {
     uint8_t th = settings_get_menu_theme(&G_Settings);
     c_bg      = theme_palette_get_background(th);
@@ -40,47 +38,31 @@ static void capture_theme(void) {
 }
 
 static uint32_t rssi_color(int rssi) {
-    if (rssi >= -60) return 0x00C853;   // strong  green
-    if (rssi >= -80) return 0xFFAA00;   // medium  amber
-    return 0xFF5252;                    // weak    red
+    if (rssi >= -60) return 0x00C853;
+    if (rssi >= -80) return 0xFFAA00;
+    return 0xFF5252;
+}
+static uint32_t kind_color(scan_kind_t k) {
+    switch (k) {
+    case SKIND_AP:      return SCAN_COLOR_AP;
+    case SKIND_STATION: return SCAN_COLOR_STATION;
+    default:            return c_text;
+    }
 }
 
 // ============================================================================
 // List view
 // ============================================================================
-static lv_obj_t *s_list_root = NULL;
-static lv_obj_t *s_list_cont = NULL;
-static lv_obj_t *s_back_btn = NULL;
-static lv_obj_t *s_empty_lbl = NULL;
-static lv_timer_t *s_list_timer = NULL;
+static lv_obj_t *s_list_root, *s_list_cont, *s_back_btn, *s_hdr, *s_empty_lbl;
+static lv_timer_t *s_list_timer;
 
-static lv_obj_t *s_rows[SNAP_MAX];
-static lv_obj_t *s_row_title[SNAP_MAX];
-static lv_obj_t *s_row_sub[SNAP_MAX];
-static lv_obj_t *s_row_rssi[SNAP_MAX];
+static lv_obj_t *s_rows[MAX_ROWS], *s_row_title[MAX_ROWS], *s_row_sub[MAX_ROWS], *s_row_rssi[MAX_ROWS];
+static scan_sig_t s_rowsig[MAX_ROWS];
+static bool s_rowactive[MAX_ROWS];
+static int s_nrows;
 
-// touch tracking
-static bool s_touch_started = false, s_touch_dragged = false;
-static int s_touch_sx, s_touch_sy, s_touch_lx, s_touch_ly;
-
-static void snapshot_merge(void) {
-    const scan_category_t *cat = scan_report_category(s_category);
-    if (!cat || !cat->count || !cat->get) return;
-    int n = cat->count();
-    for (int i = 0; i < n; i++) {
-        scan_sig_t sig;
-        if (!cat->get(i, &sig)) continue;
-        int found = -1;
-        for (int j = 0; j < s_snap_n; j++) {
-            if (strncmp(s_snap[j].title, sig.title, sizeof(sig.title)) == 0) { found = j; break; }
-        }
-        if (found < 0) {
-            if (s_snap_n >= SNAP_MAX) continue;   // list full for this session
-            found = s_snap_n++;
-        }
-        s_snap[found] = sig;   // refresh rssi/detail/sub in place
-    }
-}
+static bool s_touch_started, s_touch_dragged;
+static int s_sx, s_sy, s_lx, s_ly;
 
 static lv_obj_t *make_row(int idx) {
     lv_obj_t *row = lv_obj_create(s_list_cont);
@@ -105,7 +87,6 @@ static lv_obj_t *make_row(int idx) {
     lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
 
     s_row_title[idx] = lv_label_create(left);
-    lv_obj_set_style_text_color(s_row_title[idx], lv_color_hex(c_text), 0);
     lv_label_set_long_mode(s_row_title[idx], LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_row_title[idx], LV_PCT(100));
 
@@ -121,21 +102,35 @@ static lv_obj_t *make_row(int idx) {
 
 static void list_refresh(lv_timer_t *t) {
     (void)t;
-    snapshot_merge();
+    int total = scan_report_total_count(s_category);
+    if (total > MAX_ROWS) total = MAX_ROWS;
+    s_nrows = 0;
+    for (int i = 0; i < total; i++) {
+        if (!scan_report_seen_get(s_category, i, &s_rowsig[i], &s_rowactive[i])) break;
+        s_nrows++;
+    }
 
-    for (int i = 0; i < s_snap_n; i++) {
+    for (int i = 0; i < s_nrows; i++) {
         if (!s_rows[i]) s_rows[i] = make_row(i);
-        lv_label_set_text(s_row_title[i], s_snap[i].title[0] ? s_snap[i].title : "?");
-        lv_label_set_text(s_row_sub[i], s_snap[i].sub);
-        if (s_snap[i].has_rssi) {
-            lv_label_set_text_fmt(s_row_rssi[i], "%d", s_snap[i].rssi);
-            lv_obj_set_style_text_color(s_row_rssi[i], lv_color_hex(rssi_color(s_snap[i].rssi)), 0);
+        bool act = s_rowactive[i];
+        lv_obj_set_style_bg_opa(s_rows[i], act ? LV_OPA_COVER : LV_OPA_40, 0);
+        lv_label_set_text(s_row_title[i], s_rowsig[i].title[0] ? s_rowsig[i].title : "?");
+        lv_obj_set_style_text_color(s_row_title[i],
+                                    lv_color_hex(act ? kind_color(s_rowsig[i].kind) : c_dim), 0);
+        lv_label_set_text(s_row_sub[i], s_rowsig[i].sub);
+        if (s_rowsig[i].has_rssi) {
+            lv_label_set_text_fmt(s_row_rssi[i], "%d", s_rowsig[i].rssi);
+            lv_obj_set_style_text_color(s_row_rssi[i],
+                                        lv_color_hex(act ? rssi_color(s_rowsig[i].rssi) : c_dim), 0);
         } else {
             lv_label_set_text(s_row_rssi[i], "");
         }
     }
+
+    int active = scan_report_active_count(s_category);
+    lv_label_set_text_fmt(s_hdr, "Active: %d   #B388FF Total: %d#", active, total);
     if (s_empty_lbl) {
-        if (s_snap_n > 0) lv_obj_add_flag(s_empty_lbl, LV_OBJ_FLAG_HIDDEN);
+        if (s_nrows > 0) lv_obj_add_flag(s_empty_lbl, LV_OBJ_FLAG_HIDDEN);
         else lv_obj_clear_flag(s_empty_lbl, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -143,8 +138,8 @@ static void list_refresh(lv_timer_t *t) {
 static void scan_list_create(void) {
     if (scan_list_view.root) return;
     capture_theme();
-    s_snap_n = 0;
     memset(s_rows, 0, sizeof(s_rows));
+    s_nrows = 0;
 
     const scan_category_t *cat = scan_report_category(s_category);
     const char *title = cat && cat->name ? cat->name : "Signals";
@@ -161,7 +156,6 @@ static void scan_list_create(void) {
     lv_obj_set_scroll_dir(s_list_cont, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(s_list_cont, LV_SCROLLBAR_MODE_AUTO);
 
-    // Back button (first, always-at-top row).
     s_back_btn = lv_obj_create(s_list_cont);
     lv_obj_set_width(s_back_btn, LV_PCT(100));
     lv_obj_set_height(s_back_btn, LV_SIZE_CONTENT);
@@ -176,6 +170,11 @@ static void scan_list_create(void) {
     lv_label_set_text(bl, LV_SYMBOL_LEFT "  Back");
     lv_obj_set_style_text_color(bl, lv_color_hex(c_text), 0);
 
+    s_hdr = lv_label_create(s_list_cont);
+    lv_label_set_recolor(s_hdr, true);
+    lv_obj_set_style_text_color(s_hdr, lv_color_hex(c_text), 0);
+    lv_label_set_text(s_hdr, "Active: 0   #B388FF Total: 0#");
+
     s_empty_lbl = lv_label_create(s_list_cont);
     lv_label_set_text(s_empty_lbl, "Scanning...");
     lv_obj_set_style_text_color(s_empty_lbl, lv_color_hex(c_dim), 0);
@@ -187,7 +186,7 @@ static void scan_list_create(void) {
 static void scan_list_destroy(void) {
     if (s_list_timer) { lv_timer_del(s_list_timer); s_list_timer = NULL; }
     if (s_list_root && lv_obj_is_valid(s_list_root)) lv_obj_del(s_list_root);
-    s_list_root = s_list_cont = s_back_btn = s_empty_lbl = NULL;
+    s_list_root = s_list_cont = s_back_btn = s_hdr = s_empty_lbl = NULL;
     memset(s_rows, 0, sizeof(s_rows));
     scan_list_view.root = NULL;
     s_touch_started = false;
@@ -199,12 +198,6 @@ static bool point_in(lv_obj_t *obj, int x, int y) {
     return x >= a.x1 && x <= a.x2 && y >= a.y1 && y <= a.y2;
 }
 
-static void open_selected_detail(int snap_index) {
-    if (snap_index < 0 || snap_index >= s_snap_n) return;
-    s_selected = snap_index;
-    display_manager_switch_view(&scan_signal_view);
-}
-
 static void scan_list_input(InputEvent *event) {
     if (!event) return;
     if (event->type == INPUT_TYPE_TOUCH) {
@@ -212,37 +205,37 @@ static void scan_list_input(InputEvent *event) {
         if (d->state == LV_INDEV_STATE_PR) {
             if (!s_touch_started) {
                 s_touch_started = true; s_touch_dragged = false;
-                s_touch_sx = s_touch_lx = d->point.x;
-                s_touch_sy = s_touch_ly = d->point.y;
+                s_sx = s_lx = d->point.x; s_sy = s_ly = d->point.y;
             } else {
-                int dy = d->point.y - s_touch_ly;
-                s_touch_lx = d->point.x; s_touch_ly = d->point.y;
-                if (abs(d->point.y - s_touch_sy) > 8 || abs(d->point.x - s_touch_sx) > 8)
-                    s_touch_dragged = true;
-                if (s_touch_dragged && s_list_cont && dy)
-                    display_manager_queue_scroll(s_list_cont, dy);
+                int dy = d->point.y - s_ly;
+                s_lx = d->point.x; s_ly = d->point.y;
+                if (abs(d->point.y - s_sy) > 8 || abs(d->point.x - s_sx) > 8) s_touch_dragged = true;
+                if (s_touch_dragged && s_list_cont && dy) display_manager_queue_scroll(s_list_cont, dy);
             }
         } else if (d->state == LV_INDEV_STATE_REL && s_touch_started) {
             s_touch_started = false;
-            if (s_touch_dragged) return;   // was a scroll, not a tap
+            if (s_touch_dragged) return;
             int x = d->point.x, y = d->point.y;
             if (point_in(s_back_btn, x, y)) { display_manager_switch_view(&scan_dashboard_view); return; }
-            for (int i = 0; i < s_snap_n; i++) {
-                if (point_in(s_rows[i], x, y)) { open_selected_detail(i); return; }
+            for (int i = 0; i < s_nrows; i++) {
+                if (point_in(s_rows[i], x, y)) {
+                    s_selected_sig = s_rowsig[i];
+                    s_selected_active = s_rowactive[i];
+                    display_manager_switch_view(&scan_signal_view);
+                    return;
+                }
             }
         }
         return;
     }
 
-    // Hardware back → dashboard.
     switch (event->type) {
     case INPUT_TYPE_EXIT_BUTTON:
         display_manager_switch_view(&scan_dashboard_view);
         break;
     case INPUT_TYPE_KEYBOARD: {
         int k = event->data.key_value;
-        if (k == LV_KEY_ESC || k == 27 || k == '`' || k == 'q' || k == 'Q' ||
-            k == LV_KEY_LEFT)
+        if (k == LV_KEY_ESC || k == 27 || k == '`' || k == 'q' || k == 'Q' || k == LV_KEY_LEFT)
             display_manager_switch_view(&scan_dashboard_view);
         break;
     }
@@ -269,18 +262,16 @@ View scan_list_view = {
 // Signal detail view
 // ============================================================================
 static lv_obj_t *s_sig_root = NULL;
-static bool s_sig_touch_started = false, s_sig_touch_dragged = false;
+static bool s_sig_touch_started, s_sig_touch_dragged;
 static int s_sig_sx, s_sig_sy;
 
 static void scan_signal_create(void) {
     if (scan_signal_view.root) return;
     capture_theme();
 
-    const char *title = (s_selected >= 0 && s_selected < s_snap_n)
-                        ? s_snap[s_selected].title : "Signal";
-
     display_manager_fill_screen(lv_color_hex(c_bg));
-    s_sig_root = gui_screen_create_root(NULL, title, lv_color_hex(c_bg), LV_OPA_COVER);
+    s_sig_root = gui_screen_create_root(NULL, s_selected_sig.title[0] ? s_selected_sig.title : "Signal",
+                                        lv_color_hex(c_bg), LV_OPA_COVER);
     scan_signal_view.root = s_sig_root;
 
     lv_obj_t *cont = gui_screen_create_content(s_sig_root, GUI_STATUS_BAR_HEIGHT);
@@ -295,7 +286,9 @@ static void scan_signal_create(void) {
     lv_obj_set_height(card, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_color(card, lv_color_hex(c_surface), 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(card, 0, 0);
+    lv_obj_set_style_border_width(card, 2, 0);
+    lv_obj_set_style_border_side(card, LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(kind_color(s_selected_sig.kind)), 0);
     lv_obj_set_style_radius(card, 6, 0);
     lv_obj_set_style_pad_all(card, 12, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
@@ -304,8 +297,22 @@ static void scan_signal_create(void) {
     lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(body, LV_PCT(100));
     lv_obj_set_style_text_color(body, lv_color_hex(c_text), 0);
-    lv_label_set_text(body, (s_selected >= 0 && s_selected < s_snap_n)
-                            ? s_snap[s_selected].detail : "No data.");
+
+    char buf[288];
+    int p = 0;
+    p += snprintf(buf + p, sizeof(buf) - p, "%s\n",
+                  s_selected_sig.title[0] ? s_selected_sig.title : "Signal");
+    if (s_selected_sig.sub[0])
+        p += snprintf(buf + p, sizeof(buf) - p, "%s\n", s_selected_sig.sub);
+    if (s_selected_sig.addr[0] && strcmp(s_selected_sig.addr, s_selected_sig.title) != 0) {
+        const char *lbl = (s_selected_sig.kind == SKIND_STATION) ? "Assoc AP BSSID" : "Address";
+        p += snprintf(buf + p, sizeof(buf) - p, "%s: %s\n", lbl, s_selected_sig.addr);
+    }
+    if (s_selected_sig.has_rssi)
+        p += snprintf(buf + p, sizeof(buf) - p, "RSSI: %d dBm\n", s_selected_sig.rssi);
+    p += snprintf(buf + p, sizeof(buf) - p, "%s",
+                  s_selected_active ? "Status: active" : "Status: no longer present");
+    lv_label_set_text(body, buf);
 
     lv_obj_t *hint = lv_label_create(cont);
     lv_label_set_text(hint, LV_SYMBOL_LEFT "  Tap or Back to return");
@@ -336,7 +343,7 @@ static void scan_signal_input(InputEvent *event) {
         }
         return;
     }
-    display_manager_switch_view(&scan_list_view);   // any hardware input → back
+    display_manager_switch_view(&scan_list_view);
 }
 
 static void scan_signal_get_cb(void **cb) { if (cb) *cb = scan_signal_view.input_callback; }

@@ -21,6 +21,11 @@ void scan_scheduler_stop(void);
 
 bool scan_scheduler_is_running(void);
 
+// Focus scanning on a single category (a scan_category_id_t) so it refreshes
+// rapidly instead of waiting for the full round-robin — used when the user
+// drills into a category. Pass -1 to resume the normal all-category rotation.
+void scan_scheduler_set_focus(int category);
+
 #ifdef __cplusplus
 }
 #endif

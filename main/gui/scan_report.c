@@ -1,7 +1,8 @@
-// scan_report.c — see header. Each adapter reads its engine's live list and
-// normalizes one entry into scan_sig_t. Volatile engines (data freed between
-// scheduler phases) simply return false when a slot is unavailable; the list
-// view's snapshot preserves what was already seen.
+// scan_report.c — see header. Live adapters normalize each engine's data into a
+// compact record; the session accumulator (fed by the scheduler task) remembers
+// everything seen so the UI shows active-vs-total over an area. The UI reads
+// ONLY the accumulator, never the live engines — so the LVGL task never races
+// the scheduler's scans.
 #include "gui/scan_report.h"
 
 #include "sdkconfig.h"
@@ -10,9 +11,11 @@
 
 #include "esp_wifi_types.h"
 #include "core/callbacks.h"                    // pineap_get_*
+#include "managers/wifi_manager.h"             // station_ap_pair_t
 #include "managers/aerial_detector_manager.h"
 #include "managers/flock_detector_manager.h"
 #include "scans/wifi/ap_scan.h"
+#include "scans/wifi/station_scan.h"
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "scans/ble/flipper_scan.h"
@@ -23,64 +26,86 @@
 #define MAC6 "%02X:%02X:%02X:%02X:%02X:%02X"
 #define MACB(m) (m)[0],(m)[1],(m)[2],(m)[3],(m)[4],(m)[5]
 
-// ---- WiFi access points ----
-static int wifi_count(void) { return (int)ap_scan_get_count(); }
+static void set_mac(char *dst, size_t n, const uint8_t *m) { snprintf(dst, n, MAC6, MACB(m)); }
+
+// ---------------------------------------------------------------------------
+// Live adapters
+// ---------------------------------------------------------------------------
+
+static bool resolve_ap_ssid(const uint8_t *bssid, char *out, size_t n) {
+    uint16_t cnt = 0; wifi_ap_record_t *aps = NULL;
+    ap_scan_get_results(&cnt, &aps);
+    if (!aps) return false;
+    for (int i = 0; i < (int)cnt; i++) {
+        if (memcmp(aps[i].bssid, bssid, 6) == 0 && aps[i].ssid[0]) {
+            snprintf(out, n, "%s", (const char *)aps[i].ssid);
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---- WiFi: access points (blue) then stations (red) ----
+static int wifi_count(void) { return (int)ap_scan_get_count() + station_scan_get_count(); }
 static bool wifi_get(int i, scan_sig_t *o) {
-    uint16_t n = 0; wifi_ap_record_t *aps = NULL;
-    ap_scan_get_results(&n, &aps);
-    if (!aps || i < 0 || i >= (int)n) return false;
-    const wifi_ap_record_t *a = &aps[i];
-    char ssid[33];
-    snprintf(ssid, sizeof(ssid), "%s", a->ssid[0] ? (const char *)a->ssid : "(hidden)");
-    snprintf(o->title, sizeof(o->title), "%s", ssid);
-    snprintf(o->sub, sizeof(o->sub), "CH %d", a->primary);
-    o->rssi = a->rssi; o->has_rssi = true;
-    snprintf(o->detail, sizeof(o->detail),
-             "SSID: %s\nBSSID: " MAC6 "\nRSSI: %d dBm\nChannel: %d",
-             ssid, MACB(a->bssid), a->rssi, a->primary);
+    int nap = (int)ap_scan_get_count();
+    if (i < nap) {
+        uint16_t n = 0; wifi_ap_record_t *aps = NULL;
+        ap_scan_get_results(&n, &aps);
+        if (!aps || i >= (int)n) return false;
+        const wifi_ap_record_t *a = &aps[i];
+        snprintf(o->title, sizeof(o->title), "%s", a->ssid[0] ? (const char *)a->ssid : "(hidden)");
+        set_mac(o->addr, sizeof(o->addr), a->bssid);
+        snprintf(o->sub, sizeof(o->sub), "AP  CH %d", a->primary);
+        o->rssi = a->rssi; o->has_rssi = true; o->kind = SKIND_AP;
+        return true;
+    }
+    int s = i - nap;
+    if (s < 0 || s >= station_scan_get_count()) return false;
+    const station_ap_pair_t *st = &station_ap_list[s];
+    char ap_ssid[33];
+    bool have = resolve_ap_ssid(st->ap_bssid, ap_ssid, sizeof(ap_ssid));
+    set_mac(o->title, sizeof(o->title), st->station_mac);
+    set_mac(o->addr, sizeof(o->addr), st->ap_bssid);   // associated AP BSSID
+    if (have) snprintf(o->sub, sizeof(o->sub), "STA @ %.21s", ap_ssid);
+    else      snprintf(o->sub, sizeof(o->sub), "STA (assoc AP below)");
+    o->has_rssi = false; o->kind = SKIND_STATION;
     return true;
 }
 
-// ---- Drones (aerial RemoteID / DJI) ----
+// ---- Drones ----
 static int drones_count(void) { return aerial_detector_get_device_count(); }
 static bool drones_get(int i, scan_sig_t *o) {
     AerialDevice *d = aerial_detector_get_device(i);
     if (!d) return false;
-    const char *type = aerial_detector_get_type_string(d->type);
     snprintf(o->title, sizeof(o->title), "%s", d->vendor[0] ? d->vendor : "Drone");
-    snprintf(o->sub, sizeof(o->sub), "%s", type);
-    o->rssi = d->rssi; o->has_rssi = true;
-    snprintf(o->detail, sizeof(o->detail),
-             "ID: %s\nMAC: %s\nType: %s\nRSSI: %d dBm\nCH: %d\nLat: %.5f\nLon: %.5f",
-             d->device_id, d->mac, type, d->rssi, d->channel, d->latitude, d->longitude);
+    snprintf(o->addr, sizeof(o->addr), "%s", d->mac);
+    snprintf(o->sub, sizeof(o->sub), "%s", aerial_detector_get_type_string(d->type));
+    o->rssi = d->rssi; o->has_rssi = true; o->kind = SKIND_DEFAULT;
     return true;
 }
 
-// ---- Flock / surveillance cameras ----
+// ---- Flock ----
 static int flock_count(void) { return flock_detector_get_count(); }
 static bool flock_get(int i, scan_sig_t *o) {
     const FlockDetection *d = flock_detector_get_detection(i);
     if (!d) return false;
     snprintf(o->title, sizeof(o->title), "%s", d->mac);
+    snprintf(o->addr, sizeof(o->addr), "%s", d->mac);
     snprintf(o->sub, sizeof(o->sub), "%s", d->method);
-    o->rssi = d->rssi; o->has_rssi = true;
-    snprintf(o->detail, sizeof(o->detail),
-             "MAC: %s\nMethod: %s\nRSSI: %d dBm\nCH: %d\nSSID: %s",
-             d->mac, d->method, d->rssi, d->channel, d->ssid[0] ? d->ssid : "-");
+    o->rssi = d->rssi; o->has_rssi = true; o->kind = SKIND_DEFAULT;
     return true;
 }
 
-// ---- PineAP / rogue APs ----
+// ---- PineAP ----
 static int pineap_count(void) { return pineap_get_detected_count(); }
 static bool pineap_get(int i, scan_sig_t *o) {
     uint8_t b[6]; int sc = 0; int8_t r = 0, ch = 0; char ssid[33] = {0};
     if (pineap_get_network_data(i, b, &sc, &r, &ch, ssid, sizeof(ssid)) != 0) return false;
-    snprintf(o->title, sizeof(o->title), MAC6, MACB(b));
-    snprintf(o->sub, sizeof(o->sub), "%d SSIDs", sc);
-    o->rssi = r; o->has_rssi = true;
-    snprintf(o->detail, sizeof(o->detail),
-             "BSSID: " MAC6 "\nSSIDs seen: %d\nLast SSID: %s\nRSSI: %d dBm\nCH: %d",
-             MACB(b), sc, ssid[0] ? ssid : "-", r, ch);
+    set_mac(o->title, sizeof(o->title), b);
+    set_mac(o->addr, sizeof(o->addr), b);
+    snprintf(o->sub, sizeof(o->sub), "%d SSIDs  CH %d", sc, ch);
+    o->rssi = r; o->has_rssi = true; o->kind = SKIND_DEFAULT;
     return true;
 }
 
@@ -91,11 +116,9 @@ static bool flipper_get(int i, scan_sig_t *o) {
     uint8_t mac[6]; int8_t r = 0; char name[32] = {0};
     if (flipper_scan_get_device_data(i, mac, &r, name, sizeof(name)) != 0) return false;
     snprintf(o->title, sizeof(o->title), "%s", name[0] ? name : "Flipper");
-    snprintf(o->sub, sizeof(o->sub), MAC6, MACB(mac));
-    o->rssi = r; o->has_rssi = true;
-    snprintf(o->detail, sizeof(o->detail),
-             "Name: %s\nMAC: " MAC6 "\nRSSI: %d dBm",
-             name[0] ? name : "-", MACB(mac), r);
+    set_mac(o->addr, sizeof(o->addr), mac);
+    snprintf(o->sub, sizeof(o->sub), "Flipper Zero");
+    o->rssi = r; o->has_rssi = true; o->kind = SKIND_DEFAULT;
     return true;
 }
 
@@ -104,30 +127,41 @@ static int airtag_count(void) { return airtag_scan_get_count(); }
 static bool airtag_get(int i, scan_sig_t *o) {
     uint8_t mac[6]; int8_t r = 0;
     if (airtag_scan_get_device_data(i, mac, &r) != 0) return false;
-    snprintf(o->title, sizeof(o->title), MAC6, MACB(mac));
+    set_mac(o->title, sizeof(o->title), mac);
+    set_mac(o->addr, sizeof(o->addr), mac);
     snprintf(o->sub, sizeof(o->sub), "AirTag");
-    o->rssi = r; o->has_rssi = true;
-    snprintf(o->detail, sizeof(o->detail),
-             "Apple AirTag\nMAC: " MAC6 "\nRSSI: %d dBm", MACB(mac), r);
+    o->rssi = r; o->has_rssi = true; o->kind = SKIND_DEFAULT;
     return true;
 }
 
-// ---- BLE devices ----
-static int ble_count(void) { return ble_device_detect_get_count(); }
-static bool ble_get(int i, scan_sig_t *o) {
-    BLEDetectDeviceInfo info;
-    if (ble_device_detect_get_device(i, &info) != 0) return false;
-    const char *type = ble_device_detect_type_to_string(info.type);
-    snprintf(o->title, sizeof(o->title), "%s",
-             info.name[0] ? info.name : type);
-    snprintf(o->sub, sizeof(o->sub), "%s",
-             info.subtype[0] ? info.subtype : type);
-    o->rssi = info.rssi; o->has_rssi = true;
-    snprintf(o->detail, sizeof(o->detail),
-             "Name: %s\nType: %s\nSubtype: %s\nMAC: " MAC6 "\nRSSI: %d dBm",
-             info.name[0] ? info.name : "-", type,
-             info.subtype[0] ? info.subtype : "-", MACB(info.mac), info.rssi);
-    return true;
+// ---- BLE (excludes Flippers/AirTags — they have their own tiles) ----
+static bool ble_is_excluded(const BLEDetectDeviceInfo *info) {
+    return info->type == BLE_DETECT_DEVICE_AIRTAG ||
+           info->type == BLE_DETECT_DEVICE_FLIPPER;
+}
+static int ble_count(void) {
+    int total = ble_device_detect_get_count(), c = 0;
+    for (int i = 0; i < total; i++) {
+        BLEDetectDeviceInfo info;
+        if (ble_device_detect_get_device(i, &info) == 0 && !ble_is_excluded(&info)) c++;
+    }
+    return c;
+}
+static bool ble_get(int idx, scan_sig_t *o) {
+    int total = ble_device_detect_get_count(), c = 0;
+    for (int i = 0; i < total; i++) {
+        BLEDetectDeviceInfo info;
+        if (ble_device_detect_get_device(i, &info) != 0) continue;
+        if (ble_is_excluded(&info)) continue;
+        if (c++ != idx) continue;
+        const char *type = ble_device_detect_type_to_string(info.type);
+        snprintf(o->title, sizeof(o->title), "%s", info.name[0] ? info.name : type);
+        set_mac(o->addr, sizeof(o->addr), info.mac);
+        snprintf(o->sub, sizeof(o->sub), "%s", info.subtype[0] ? info.subtype : type);
+        o->rssi = info.rssi; o->has_rssi = true; o->kind = SKIND_DEFAULT;
+        return true;
+    }
+    return false;
 }
 #endif // !S2
 
@@ -150,4 +184,93 @@ static const scan_category_t s_categories[SCAT_COUNT] = {
 const scan_category_t *scan_report_category(scan_category_id_t id) {
     if (id < 0 || id >= SCAT_COUNT) return NULL;
     return &s_categories[id];
+}
+
+// ---------------------------------------------------------------------------
+// Session accumulator (compact; UI reads this, scheduler writes it)
+// ---------------------------------------------------------------------------
+#define SEEN_MAX 16
+
+typedef struct {
+    char        title[34];
+    char        addr[20];
+    char        sub[28];
+    int8_t      rssi;
+    bool        has_rssi;
+    scan_kind_t kind;
+    bool        active;
+} seen_t;
+
+static seen_t s_seen[SCAT_COUNT][SEEN_MAX];
+static int    s_seen_n[SCAT_COUNT];
+
+void scan_report_reset_session(void) {
+    memset(s_seen, 0, sizeof(s_seen));
+    memset(s_seen_n, 0, sizeof(s_seen_n));
+}
+
+void scan_report_accumulate(scan_category_id_t id) {
+    const scan_category_t *cat = scan_report_category(id);
+    if (!cat || !cat->count || !cat->get) return;
+
+    for (int j = 0; j < s_seen_n[id]; j++) s_seen[id][j].active = false;
+
+    int n = cat->count();
+    for (int i = 0; i < n; i++) {
+        scan_sig_t sig;
+        memset(&sig, 0, sizeof(sig));
+        if (!cat->get(i, &sig)) continue;
+        int f = -1;
+        for (int j = 0; j < s_seen_n[id]; j++) {
+            if (strncmp(s_seen[id][j].title, sig.title, sizeof(sig.title)) == 0) { f = j; break; }
+        }
+        if (f < 0) {
+            if (s_seen_n[id] >= SEEN_MAX) continue;
+            f = s_seen_n[id]++;
+        }
+        seen_t *e = &s_seen[id][f];
+        snprintf(e->title, sizeof(e->title), "%s", sig.title);
+        snprintf(e->addr, sizeof(e->addr), "%s", sig.addr);
+        snprintf(e->sub, sizeof(e->sub), "%s", sig.sub);
+        e->rssi = sig.rssi; e->has_rssi = sig.has_rssi; e->kind = sig.kind;
+        e->active = true;
+    }
+}
+
+int scan_report_total_count(scan_category_id_t id) {
+    if (id < 0 || id >= SCAT_COUNT) return 0;
+    return s_seen_n[id];
+}
+int scan_report_active_count(scan_category_id_t id) {
+    if (id < 0 || id >= SCAT_COUNT) return 0;
+    int c = 0;
+    for (int j = 0; j < s_seen_n[id]; j++) if (s_seen[id][j].active) c++;
+    return c;
+}
+int scan_report_kind_active(scan_category_id_t id, scan_kind_t kind) {
+    if (id < 0 || id >= SCAT_COUNT) return 0;
+    int c = 0;
+    for (int j = 0; j < s_seen_n[id]; j++)
+        if (s_seen[id][j].active && s_seen[id][j].kind == kind) c++;
+    return c;
+}
+
+bool scan_report_seen_get(scan_category_id_t id, int index, scan_sig_t *out, bool *active) {
+    if (id < 0 || id >= SCAT_COUNT || !out) return false;
+    int total = s_seen_n[id], c = 0;
+    for (int pass = 0; pass < 2; pass++) {          // active rows first
+        bool want_active = (pass == 0);
+        for (int j = 0; j < total; j++) {
+            seen_t *e = &s_seen[id][j];
+            if (e->active != want_active) continue;
+            if (c++ != index) continue;
+            snprintf(out->title, sizeof(out->title), "%s", e->title);
+            snprintf(out->addr, sizeof(out->addr), "%s", e->addr);
+            snprintf(out->sub, sizeof(out->sub), "%s", e->sub);
+            out->rssi = e->rssi; out->has_rssi = e->has_rssi; out->kind = e->kind;
+            if (active) *active = e->active;
+            return true;
+        }
+    }
+    return false;
 }

@@ -4,16 +4,21 @@
 #include "managers/settings_manager.h"
 
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
-#define SCAN_TILE_BAR_MAX 20   // count magnitude at which the level bar is full
+#define SCAN_TILE_BAR_MAX 20     // total magnitude at which the level bar is full
+#define SCAN_TILE_TOTAL_COLOR 0xB388FF  // purple "N seen" (matches SCAN_COLOR_TOTAL)
 
 struct scan_tile_t {
     lv_obj_t *card;
     lv_obj_t *count_label;
+    lv_obj_t *total_label;
     lv_obj_t *bar;        // level-bar track (plain lv_obj; lv_bar isn't built on
                           // every board's LVGL config, so we roll our own)
     lv_obj_t *bar_fill;   // indicator child, width set as a percentage of track
-    int last_count;
+    char last_primary[24];
+    int last_total;
     scan_severity_t last_sev;
     // palette (captured at create so update() stays theme-consistent)
     uint32_t surface;
@@ -42,7 +47,8 @@ scan_tile_t *scan_tile_create(lv_obj_t *parent, const char *label) {
     t->dim         = theme_palette_get_text_muted(theme);
     t->sev_present = 0xFFAA00;  // amber
     t->sev_threat  = 0xFF4444;  // red
-    t->last_count  = -1;
+    t->last_primary[0] = '\0';
+    t->last_total  = -1;
     t->last_sev    = (scan_severity_t)-1;
 
     t->card = lv_obj_create(parent);
@@ -71,6 +77,10 @@ scan_tile_t *scan_tile_create(lv_obj_t *parent, const char *label) {
     lv_obj_set_style_text_color(t->count_label, lv_color_hex(t->dim), 0);
     lv_obj_set_style_text_font(t->count_label, &lv_font_montserrat_24, 0);
 
+    t->total_label = lv_label_create(t->card);          // "N seen" (session total)
+    lv_label_set_text(t->total_label, "0 seen");
+    lv_obj_set_style_text_color(t->total_label, lv_color_hex(SCAN_TILE_TOTAL_COLOR), 0);
+
     t->bar = lv_obj_create(t->card);
     lv_obj_set_size(t->bar, LV_PCT(100), 4);
     lv_obj_set_style_bg_color(t->bar, lv_color_hex(t->surface), 0);
@@ -93,18 +103,24 @@ scan_tile_t *scan_tile_create(lv_obj_t *parent, const char *label) {
     return t;
 }
 
-void scan_tile_set(scan_tile_t *t, int count, scan_severity_t sev) {
+void scan_tile_set(scan_tile_t *t, const char *primary, int total, scan_severity_t sev) {
     if (!t) return;
-    if (count == t->last_count && sev == t->last_sev) return;
-    t->last_count = count;
+    if (!primary) primary = "0";
+    if (total == t->last_total && sev == t->last_sev &&
+        strncmp(primary, t->last_primary, sizeof(t->last_primary)) == 0) {
+        return;
+    }
+    snprintf(t->last_primary, sizeof(t->last_primary), "%s", primary);
+    t->last_total = total;
     t->last_sev = sev;
 
     uint32_t color = sev_color(t, sev);
-    lv_label_set_text_fmt(t->count_label, "%d", count);
+    lv_label_set_text(t->count_label, primary);
     lv_obj_set_style_text_color(t->count_label, lv_color_hex(color), 0);
     lv_obj_set_style_border_color(t->card, lv_color_hex(color), 0);
+    lv_label_set_text_fmt(t->total_label, "%d seen", total);
 
-    int bar_val = count;
+    int bar_val = total;
     if (bar_val > SCAN_TILE_BAR_MAX) bar_val = SCAN_TILE_BAR_MAX;
     if (bar_val < 0) bar_val = 0;
     lv_obj_set_width(t->bar_fill, LV_PCT(bar_val * 100 / SCAN_TILE_BAR_MAX));

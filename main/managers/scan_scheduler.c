@@ -1,6 +1,9 @@
-// scan_scheduler.c — see header. Mirrors the phase order proven by
-// `sweep_run_internal` (main/core/commands/cmd_scan.c), but loops forever and
-// stops one phase's radio use before starting the next.
+// scan_scheduler.c — continuous multi-radio detection loop. One WiFi + one BLE
+// radio, so categories run sequentially in short phases. BLE runs first (faster
+// to yield results), then WiFi and the WiFi-promiscuous detectors. After each
+// phase's window it feeds the session accumulator (scan_report). When a category
+// is "focused" (user drilled into it) the loop runs only that category so it
+// refreshes rapidly.
 #include "managers/scan_scheduler.h"
 
 #include "sdkconfig.h"
@@ -10,10 +13,11 @@
 
 #include "core/system_manager.h"   // xTaskCreate_psram
 #include "core/callbacks.h"        // start/stop_pineap_detection
+#include "gui/scan_report.h"       // scan_report_accumulate + SCAT_*
 #include "managers/wifi_manager.h"
 #include "managers/flock_detector_manager.h"
 #include "managers/aerial_detector_manager.h"
-#include "scans/wifi/ap_scan.h"    // ap_scan_start_async (feeds ap_scan_get_count)
+#include "scans/wifi/ap_scan.h"
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "managers/ble_manager.h"          // ble_stop
@@ -24,44 +28,23 @@
 
 static const char *TAG = "scan_sched";
 
-// Per-phase dwell. Full cycle ~= (phases * dwell); tuned for a responsive but
-// stable dashboard rather than exhaustive capture.
 #define SCAN_WIFI_DWELL_MS   3000
 #define SCAN_PHASE_DWELL_MS  2500
 #define SCAN_GAP_MS          300
 
 static volatile bool s_run = false;
-static TaskHandle_t s_task = NULL;
+static volatile int  s_focus = -1;   // scan_category_id_t, or -1 for round-robin
+static TaskHandle_t  s_task = NULL;
 
-// Cooperative stop check between phases.
-#define STOP_OR_BREAK() do { if (!s_run) goto done; } while (0)
 #define PHASE_DELAY()   vTaskDelay(pdMS_TO_TICKS(SCAN_PHASE_DWELL_MS))
 #define GAP_DELAY()     vTaskDelay(pdMS_TO_TICKS(SCAN_GAP_MS))
 
-static void scan_scheduler_task(void *arg) {
-    (void)arg;
-    ESP_LOGI(TAG, "scan scheduler started");
-
-    // Aerial and flock create their mutexes in _init() (normally called by the
-    // aerial/flock command view, which the dashboard bypasses). Init them once
-    // here so their scan callbacks never take a NULL mutex — otherwise the
-    // device asserts with "xQueueSemaphoreTake ... pxQueue" the first time a
-    // packet arrives during those phases. The mutexes persist across start/stop;
-    // only _deinit() frees them, which we deliberately never call.
-    aerial_detector_init();
-    flock_detector_init();
-
-    // The aerial "network" heuristic flags ordinary WiFi beacons as drone
-    // control links — a huge false-positive rate anywhere with normal APs
-    // (it filled the Drones tile with phantom hits). Restrict headless
-    // detection to precise signatures: OpenDroneID + DJI.
-    aerial_detector_enable_network_detection(false);
-
-    while (s_run) {
-        // ---- WiFi phases (shared WiFi radio, one owner at a time) ----
-        // AP scan via the ap_scan module so ap_scan_get_count() is populated
-        // (wifi_manager_start_scan_with_time bypasses that module).
-        STOP_OR_BREAK();
+// Run one category's scan window, then snapshot it into the session accumulator.
+static void run_phase(scan_category_id_t cat) {
+    if (!s_run) return;
+    switch (cat) {
+    case SCAT_WIFI: {
+        // AP scan via the ap_scan module (feeds ap_scan_get_count / results).
         if (ap_scan_start_async() == ESP_OK) {
             int waited = 0;
             while (s_run && ap_scan_is_running() && waited < SCAN_WIFI_DWELL_MS) {
@@ -71,54 +54,98 @@ static void scan_scheduler_task(void *arg) {
             ap_scan_finish_async();
         }
         GAP_DELAY();
-
-        STOP_OR_BREAK();
+        if (!s_run) return;
+        // Station scan (APs stay resident, so accumulate captures both).
         wifi_manager_start_station_scan();
         PHASE_DELAY();
+        scan_report_accumulate(SCAT_WIFI);
         wifi_manager_stop_monitor_mode();
         GAP_DELAY();
-
-        STOP_OR_BREAK();
+        break;
+    }
+    case SCAT_PINEAP:
         start_pineap_detection();
         PHASE_DELAY();
+        scan_report_accumulate(SCAT_PINEAP);
         stop_pineap_detection();
         GAP_DELAY();
-
-        STOP_OR_BREAK();
+        break;
+    case SCAT_DRONES:
         (void)aerial_detector_start_scan(SCAN_PHASE_DWELL_MS);
         PHASE_DELAY();
+        scan_report_accumulate(SCAT_DRONES);
         (void)aerial_detector_stop_scan();
         GAP_DELAY();
-
-        STOP_OR_BREAK();
+        break;
+    case SCAT_FLOCK:
         (void)flock_detector_start();
         PHASE_DELAY();
+        scan_report_accumulate(SCAT_FLOCK);
         (void)flock_detector_stop();
         GAP_DELAY();
-
+        break;
 #ifndef CONFIG_IDF_TARGET_ESP32S2
-        // ---- BLE phases (shared BLE radio) ----
-        STOP_OR_BREAK();
+    case SCAT_FLIPPERS:
         flipper_scan_start();
         PHASE_DELAY();
+        scan_report_accumulate(SCAT_FLIPPERS);
         flipper_scan_stop();
         GAP_DELAY();
-
-        STOP_OR_BREAK();
+        break;
+    case SCAT_AIRTAGS:
         airtag_scan_start();
         PHASE_DELAY();
+        scan_report_accumulate(SCAT_AIRTAGS);
         airtag_scan_stop();
         GAP_DELAY();
-
-        STOP_OR_BREAK();
+        break;
+    case SCAT_BLE:
         ble_device_detect_start();
         PHASE_DELAY();
+        scan_report_accumulate(SCAT_BLE);
         ble_device_detect_stop();
         GAP_DELAY();
+        break;
 #endif
+    default:
+        break;
+    }
+}
+
+static void scan_scheduler_task(void *arg) {
+    (void)arg;
+    ESP_LOGI(TAG, "scan scheduler started");
+
+    // Aerial/flock create their mutexes in _init() (normally called by their
+    // command view, which the dashboard bypasses). Init once so their scan
+    // callbacks never take a NULL mutex.
+    aerial_detector_init();
+    flock_detector_init();
+    // The aerial "network" heuristic flags ordinary beacons as drones; restrict
+    // headless detection to precise signatures (OpenDroneID + DJI).
+    aerial_detector_enable_network_detection(false);
+
+    while (s_run) {
+        int focus = s_focus;
+        if (focus >= 0 && focus < SCAT_COUNT) {
+            run_phase((scan_category_id_t)focus);
+        } else {
+            // WiFi-first rotation (proven stable). Running a WiFi phase directly
+            // after a BLE phase crashes esp_netif teardown, because BLE start
+            // calls esp_wifi_deinit() for coexistence; keeping WiFi first and BLE
+            // last avoids that. Fast BLE-on-demand comes from focus mode instead.
+            run_phase(SCAT_WIFI);
+            run_phase(SCAT_PINEAP);
+            run_phase(SCAT_DRONES);
+            run_phase(SCAT_FLOCK);
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+            run_phase(SCAT_FLIPPERS);
+            run_phase(SCAT_AIRTAGS);
+            run_phase(SCAT_BLE);
+#endif
+        }
     }
 
-done:
     // Leave every radio idle before exiting.
     wifi_manager_stop_monitor_mode();
     stop_pineap_detection();
@@ -136,9 +163,7 @@ done:
 }
 
 void scan_scheduler_start(void) {
-    if (s_task != NULL || s_run) {
-        return;
-    }
+    if (s_task != NULL || s_run) return;
     s_run = true;
     BaseType_t ok = xTaskCreate_psram(scan_scheduler_task, "scan_sched", 8192,
                                       NULL, 5, &s_task);
@@ -150,9 +175,13 @@ void scan_scheduler_start(void) {
 }
 
 void scan_scheduler_stop(void) {
-    s_run = false;  // task exits at its next STOP_OR_BREAK and self-deletes
+    s_run = false;   // task finishes its phase, stops radios, self-deletes
 }
 
 bool scan_scheduler_is_running(void) {
     return s_run;
+}
+
+void scan_scheduler_set_focus(int category) {
+    s_focus = category;
 }

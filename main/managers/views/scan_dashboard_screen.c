@@ -8,6 +8,8 @@
 #include "sdkconfig.h"
 #include "lvgl.h"
 #include <stdlib.h>
+#include <stdint.h>
+#include <stdio.h>
 #include "gui/scan_tile.h"
 #include "gui/scan_report.h"
 #include "gui/screen_layout.h"
@@ -42,10 +44,10 @@ static int s_ntiles = 0;
 static bool s_touch_started = false, s_touch_dragged = false;
 static int s_sx, s_sy, s_lx, s_ly;
 
-static scan_tile_t *tile_for(scan_category_id_t cat) {
-    for (int i = 0; i < s_ntiles; i++) if (s_tiles[i].cat == cat) return s_tiles[i].tile;
-    return NULL;
-}
+// Live Scan keeps the screen always-on for uninterrupted observability; we
+// stash the user's display timeout on entry and restore it when leaving.
+static uint32_t s_saved_timeout = 0;
+static bool s_screen_forced = false;
 
 static void add_tile(lv_obj_t *content, const char *label, scan_category_id_t cat) {
     scan_tile_t *t = scan_tile_create(content, label);
@@ -54,34 +56,40 @@ static void add_tile(lv_obj_t *content, const char *label, scan_category_id_t ca
     if (s_ntiles < MAX_TILES) { s_tiles[s_ntiles].tile = t; s_tiles[s_ntiles].cat = cat; s_ntiles++; }
 }
 
-static void set_tile(scan_category_id_t cat, int count, scan_severity_t sev) {
-    scan_tile_set(tile_for(cat), count, sev);
+// Threat categories glow red on any hit; presence categories glow amber.
+static scan_severity_t sev_for(scan_category_id_t cat, int count) {
+    if (count <= 0) return SCAN_SEV_IDLE;
+    switch (cat) {
+    case SCAT_DRONES:
+    case SCAT_FLOCK:
+    case SCAT_PINEAP:
+    case SCAT_FLIPPERS:
+        return SCAN_SEV_THREAT;
+    default:                    // WiFi, AirTags, BLE
+        return SCAN_SEV_PRESENT;
+    }
 }
 
+// Counts come from the session accumulator (fed by the scheduler task), NOT the
+// live engine getters — so the LVGL task never races the scheduler's scans, and
+// tiles show active-now plus a running "N seen" session total. WiFi splits into
+// A:<access points> S:<stations>.
 static void update_cb(lv_timer_t *timer) {
     (void)timer;
-    int wifi = (int)ap_scan_get_count() + station_scan_get_count();
-    set_tile(SCAT_WIFI, wifi, wifi > 0 ? SCAN_SEV_PRESENT : SCAN_SEV_IDLE);
-
-    int drones = aerial_detector_get_device_count();
-    set_tile(SCAT_DRONES, drones, drones > 0 ? SCAN_SEV_THREAT : SCAN_SEV_IDLE);
-
-    int flock = flock_detector_get_count();
-    set_tile(SCAT_FLOCK, flock, flock > 0 ? SCAN_SEV_THREAT : SCAN_SEV_IDLE);
-
-    int pineap = pineap_get_detected_count();
-    set_tile(SCAT_PINEAP, pineap, pineap > 0 ? SCAN_SEV_THREAT : SCAN_SEV_IDLE);
-
-#ifndef CONFIG_IDF_TARGET_ESP32S2
-    int flippers = flipper_scan_get_count();
-    set_tile(SCAT_FLIPPERS, flippers, flippers > 0 ? SCAN_SEV_THREAT : SCAN_SEV_IDLE);
-
-    int airtags = airtag_scan_get_count();
-    set_tile(SCAT_AIRTAGS, airtags, airtags > 0 ? SCAN_SEV_PRESENT : SCAN_SEV_IDLE);
-
-    int ble = ble_device_detect_get_count();
-    set_tile(SCAT_BLE, ble, ble > 0 ? SCAN_SEV_PRESENT : SCAN_SEV_IDLE);
-#endif
+    char primary[24];
+    for (int i = 0; i < s_ntiles; i++) {
+        scan_category_id_t cat = s_tiles[i].cat;
+        int active = scan_report_active_count(cat);
+        int total = scan_report_total_count(cat);
+        if (cat == SCAT_WIFI) {
+            snprintf(primary, sizeof(primary), "A:%d S:%d",
+                     scan_report_kind_active(cat, SKIND_AP),
+                     scan_report_kind_active(cat, SKIND_STATION));
+        } else {
+            snprintf(primary, sizeof(primary), "%d", active);
+        }
+        scan_tile_set(s_tiles[i].tile, primary, total, sev_for(cat, active));
+    }
 }
 
 static void scan_dashboard_create(void) {
@@ -91,6 +99,17 @@ static void scan_dashboard_create(void) {
     uint32_t bg = theme_palette_get_background(theme);
     uint32_t accent = theme_palette_get_accent(theme);
     uint32_t text = theme_palette_get_text(theme);
+
+    // Force the screen to stay on for the whole Live Scan session (guarded so
+    // re-entering from a drill-down doesn't overwrite the saved value with the
+    // already-forced "Never"). Restored in go_to_menu().
+    if (!s_screen_forced) {
+        s_saved_timeout = G_Settings.display_timeout_ms;
+        G_Settings.display_timeout_ms = UINT32_MAX;   // UINT32_MAX == "Never"
+        s_screen_forced = true;
+        scan_report_reset_session();   // fresh session totals per Live Scan visit
+    }
+    scan_scheduler_set_focus(-1);   // dashboard shows all categories (round-robin)
 
     s_ntiles = 0;
     display_manager_fill_screen(lv_color_hex(bg));
@@ -152,12 +171,17 @@ static void scan_dashboard_destroy(void) {
 }
 
 static void go_to_menu(void) {
+    if (s_screen_forced) {
+        G_Settings.display_timeout_ms = s_saved_timeout;   // restore sleep behavior
+        s_screen_forced = false;
+    }
     scan_scheduler_stop();
     display_manager_switch_view(&main_menu_view);
 }
 
 static void open_category(scan_category_id_t cat) {
     scan_list_set_category(cat);
+    scan_scheduler_set_focus((int)cat);   // fast-scan just this category while viewing
     display_manager_switch_view(&scan_list_view);   // scheduler keeps running
 }
 
