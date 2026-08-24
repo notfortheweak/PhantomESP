@@ -13,6 +13,7 @@
 #include "scans/wifi/ap_scan.h"
 #include "core/scan_saver.h"
 #include "core/ouis.h"
+#include "core/network_constants.h"   // WIFI_CHANNELS_2GHZ_ORDER (full 1-14, 1/6/11 first)
 #include "core/glog.h"
 #include "core/utils.h"
 #include "managers/ap_manager.h"
@@ -47,6 +48,7 @@ static bool scan_active = false;
 static esp_timer_handle_t scansta_channel_hop_timer = NULL;
 static bool scansta_hopping_active = false;
 static uint8_t scansta_current_channel = 1;
+static int scansta_chan_idx = 0;   // index into WIFI_CHANNELS_2GHZ_ORDER
 
 // Forward declarations
 static bool station_exists(const uint8_t *station_mac, const uint8_t *ap_bssid);
@@ -312,7 +314,10 @@ static void add_station_ap_pair(const uint8_t *station_mac, const uint8_t *ap_bs
 static void scansta_channel_hop_timer_callback(void *arg) {
     if (!scansta_hopping_active) return;
 
-    scansta_current_channel = (scansta_current_channel % SCANSTA_MAX_WIFI_CHANNEL) + 1;
+    // Hop the full 2.4GHz band in scan-priority order (1/6/11 first), matching the
+    // drone scan, instead of a plain 1->13 sweep that also skipped channel 14.
+    scansta_chan_idx = (scansta_chan_idx + 1) % (int)WIFI_CHANNELS_2GHZ_ORDER_COUNT;
+    scansta_current_channel = WIFI_CHANNELS_2GHZ_ORDER[scansta_chan_idx];
     esp_wifi_set_channel(scansta_current_channel, WIFI_SECOND_CHAN_NONE);
 }
 
@@ -329,7 +334,15 @@ static esp_err_t start_scansta_channel_hopping(void) {
         scansta_channel_hop_timer = NULL;
     }
 
-    scansta_current_channel = 1;
+    // Permissive country so esp_wifi_set_channel() accepts the full 2.4GHz band
+    // (ch 12-14 are otherwise rejected under US/other regions). This is passive
+    // RX for scanning, not transmitting.
+    wifi_country_t scan_country = { .cc = "JP", .schan = 1, .nchan = 14,
+                                   .policy = WIFI_COUNTRY_POLICY_MANUAL };
+    esp_wifi_set_country(&scan_country);
+
+    scansta_chan_idx = 0;
+    scansta_current_channel = WIFI_CHANNELS_2GHZ_ORDER[0];
     esp_wifi_set_channel(scansta_current_channel, WIFI_SECOND_CHAN_NONE);
 
     esp_timer_create_args_t timer_args = {

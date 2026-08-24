@@ -283,6 +283,14 @@ void ap_scan_start(void) {
     TERMINAL_VIEW_ADD_TEXT("Please wait 5 Seconds...\n");
 #endif
 
+    // Scan the full 2.4GHz band (ch 1-14). channel=0 sweeps every channel the
+    // country permits, so set a permissive country first (US/others otherwise cap
+    // the sweep at 11/13). Passive scan RX only, not transmitting.
+    {
+        wifi_country_t scan_country = { .cc = "JP", .schan = 1, .nchan = 14,
+                                       .policy = WIFI_COUNTRY_POLICY_MANUAL };
+        esp_wifi_set_country(&scan_country);
+    }
     err = esp_wifi_scan_start(&scan_config, true);
 
     if (err != ESP_OK) {
@@ -384,6 +392,13 @@ esp_err_t ap_scan_start_async(void) {
     TERMINAL_VIEW_ADD_TEXT("Please wait 5 Seconds...\n");
 #endif
 
+    // Full 2.4GHz band (ch 1-14): permissive country so channel=0 sweeps all of
+    // it regardless of the configured region. Passive scan RX only.
+    {
+        wifi_country_t scan_country = { .cc = "JP", .schan = 1, .nchan = 14,
+                                       .policy = WIFI_COUNTRY_POLICY_MANUAL };
+        esp_wifi_set_country(&scan_country);
+    }
     err = esp_wifi_scan_start(&scan_config, false);
     if (err == ESP_ERR_WIFI_STATE) {
         ESP_LOGW(TAG, "STA busy, forcing disconnect before scan retry");

@@ -303,6 +303,13 @@ const uint8_t LIVE_AP_CHANNELS_DUAL[] = {
 };
 const size_t LIVE_AP_CHANNELS_DUAL_COUNT = sizeof(LIVE_AP_CHANNELS_DUAL) / sizeof(LIVE_AP_CHANNELS_DUAL[0]);
 
+// Full 2.4 GHz band in scan-priority order: non-overlapping 1/6/11 first, then
+// the rest, covering channels 1-14. Shared by the drone scan (aerial_detector)
+// and the WiFi AP/station scans so all cover the same channels in the same order.
+const uint8_t WIFI_CHANNELS_2GHZ_ORDER[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14};
+const size_t WIFI_CHANNELS_2GHZ_ORDER_COUNT =
+    sizeof(WIFI_CHANNELS_2GHZ_ORDER) / sizeof(WIFI_CHANNELS_2GHZ_ORDER[0]);
+
 // ============================================================================
 // OUI (ORGANIZATIONALLY UNIQUE IDENTIFIER) DEFINITIONS
 // ============================================================================
