@@ -336,6 +336,7 @@ void register_commands() {
     register_command("aeriallist", handle_aerial_list_cmd);
     register_command("aerialtrack", handle_aerial_track_cmd);
     register_command("aerialstop", handle_aerial_stop_cmd);
+    register_command("aerialdiag", handle_aerial_diag_cmd);
     register_command("flockscan", handle_flock_scan_cmd);
     register_command("flocklist", handle_flock_list_cmd);
     register_command("flockstop", handle_flock_stop_cmd);

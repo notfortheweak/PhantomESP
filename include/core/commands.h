@@ -160,6 +160,7 @@ void handle_aerial_scan_cmd(int argc, char **argv);
 void handle_aerial_list_cmd(int argc, char **argv);
 void handle_aerial_track_cmd(int argc, char **argv);
 void handle_aerial_stop_cmd(int argc, char **argv);
+void handle_aerial_diag_cmd(int argc, char **argv);
 void handle_flock_scan_cmd(int argc, char **argv);
 void handle_flock_list_cmd(int argc, char **argv);
 void handle_flock_stop_cmd(int argc, char **argv);

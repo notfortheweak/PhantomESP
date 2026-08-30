@@ -12,6 +12,8 @@
 #include "esp_wifi_types.h"
 #include "core/callbacks.h"                    // pineap_get_*
 #include "managers/wifi_manager.h"             // station_ap_pair_t
+#include "scans/wifi/camera_detect.h"
+#include "core/network_constants.h"
 #include "managers/aerial_detector_manager.h"
 #include "managers/flock_detector_manager.h"
 #include "scans/wifi/ap_scan.h"
@@ -121,6 +123,25 @@ static bool flock_get(int i, scan_sig_t *o) {
     return true;
 }
 
+// ---- Surveillance cameras (vendor-OUI matched; no dedicated radio phase) ----
+static int cameras_count(void) { return camera_detect_get_count(); }
+static bool cameras_get(int i, scan_sig_t *o) {
+    const camera_detection_t *d = camera_detect_get(i);
+    if (!d) return false;
+    snprintf(o->title, sizeof(o->title), "%s", d->vendor ? d->vendor : "Camera");
+    snprintf(o->addr, sizeof(o->addr), "%02x:%02x:%02x:%02x:%02x:%02x",
+             d->mac[0], d->mac[1], d->mac[2], d->mac[3], d->mac[4], d->mac[5]);
+    // Tier drives both the label and the row color: targeted platforms (ALPR /
+    // bodycam / cloud surveillance) matter far more than an ordinary shop camera.
+    if (d->tier == SURV_TIER_TARGETED)
+        snprintf(o->sub, sizeof(o->sub), "SURVEILLANCE  ch%d", d->channel);
+    else
+        snprintf(o->sub, sizeof(o->sub), "IP camera  ch%d", d->channel);
+    o->rssi = d->rssi; o->has_rssi = (d->rssi != 0);
+    o->kind = (d->tier == SURV_TIER_TARGETED) ? SKIND_STATION : SKIND_AP;
+    return true;
+}
+
 // ---- PineAP ----
 static int pineap_count(void) { return pineap_get_detected_count(); }
 static bool pineap_get(int i, scan_sig_t *o) {
@@ -193,6 +214,7 @@ static const scan_category_t s_categories[SCAT_COUNT] = {
     [SCAT_WIFI]     = { "WiFi",     wifi_count,   wifi_get },
     [SCAT_DRONES]   = { "Drones",   drones_count, drones_get },
     [SCAT_FLOCK]    = { "Flock Cam",flock_count,  flock_get },
+    [SCAT_CAMERAS]  = { "Cameras",  cameras_count,cameras_get },
     [SCAT_PINEAP]   = { "PineAP",   pineap_count, pineap_get },
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     [SCAT_FLIPPERS] = { "Flippers", flipper_count,flipper_get },

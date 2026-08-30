@@ -5,6 +5,7 @@
 //
 
 #include "managers/flock_detector_manager.h"
+#include "scans/wifi/camera_detect.h"
 #include "managers/wifi_manager.h"
 #include "core/glog.h"
 #include "esp_log.h"
@@ -283,6 +284,12 @@ static void IRAM_ATTR flock_sniffer_cb(void *buf, wifi_promiscuous_pkt_type_t ty
     int8_t rssi = pkt->rx_ctrl.rssi;
     if (rssi < -95) return;
     uint8_t ch = (uint8_t)pkt->rx_ctrl.channel;
+
+    // Piggyback surveillance-camera detection on this sniffer: it is already
+    // promiscuous during the FLOCK phase, so cameras cost no extra scan time.
+    // camera_detect_observe() is allocation-free and non-blocking, which this
+    // IRAM_ATTR/ISR context requires.
+    camera_detect_observe(hdr->addr2, rssi, ch);
 
     if (oui_match(hdr->addr2)) {
         bool emitted = false;

@@ -109,6 +109,12 @@ AerialDevice* aerial_detector_get_tracked_device(void);
 void aerial_detector_enable_opendroneid(bool enable);
 void aerial_detector_enable_dji_detection(bool enable);
 void aerial_detector_enable_network_detection(bool enable);
+
+// Opt-in sniffer diagnostics (`aerialdiag on`): logs each unique transmitter OUI
+// heard plus every DJI-OUI / DroneID-IE hit, and a per-phase frame tally. Off by
+// default; use it to tell "not detected" apart from "never heard".
+void aerial_detector_set_diagnostics(bool enable);
+bool aerial_detector_diagnostics_enabled(void);
 void aerial_detector_enable_telemetry_detection(bool enable);
 
 // channel hopping configuration

@@ -26,6 +26,10 @@ struct scan_tile_t {
     uint32_t dim;
     uint32_t sev_present;
     uint32_t sev_threat;
+    uint32_t accent;
+    // scanning-pulse state, so restyling only happens when it actually changes
+    bool last_scanning;
+    bool last_phase;
 };
 
 static uint32_t sev_color(const scan_tile_t *t, scan_severity_t sev) {
@@ -36,7 +40,7 @@ static uint32_t sev_color(const scan_tile_t *t, scan_severity_t sev) {
     }
 }
 
-scan_tile_t *scan_tile_create(lv_obj_t *parent, const char *label) {
+scan_tile_t *scan_tile_create(lv_obj_t *parent, const char *label, const char *icon) {
     if (!parent) return NULL;
     scan_tile_t *t = calloc(1, sizeof(scan_tile_t));
     if (!t) return NULL;
@@ -45,11 +49,14 @@ scan_tile_t *scan_tile_create(lv_obj_t *parent, const char *label) {
     t->surface     = theme_palette_get_surface_alt(theme);
     t->text        = theme_palette_get_text(theme);
     t->dim         = theme_palette_get_text_muted(theme);
+    t->accent      = theme_palette_get_accent(theme);
     t->sev_present = 0xFFAA00;  // amber
     t->sev_threat  = 0xFF4444;  // red
     t->last_primary[0] = '\0';
     t->last_total  = -1;
     t->last_sev    = (scan_severity_t)-1;
+    t->last_scanning = false;
+    t->last_phase    = false;
 
     t->card = lv_obj_create(parent);
     lv_obj_set_size(t->card, LV_PCT(100), LV_SIZE_CONTENT);
@@ -66,8 +73,12 @@ scan_tile_t *scan_tile_create(lv_obj_t *parent, const char *label) {
     lv_obj_set_flex_align(t->card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START,
                           LV_FLEX_ALIGN_START);
 
+    // Icon + label share one line. The icon is a font glyph, so this is a single
+    // extra label rather than an image -- important on the no-PSRAM boards where
+    // LVGL's builtin pool is only ~20KB.
     lv_obj_t *title = lv_label_create(t->card);
-    lv_label_set_text(title, label ? label : "");
+    if (icon && icon[0]) lv_label_set_text_fmt(title, "%s %s", icon, label ? label : "");
+    else                 lv_label_set_text(title, label ? label : "");
     lv_obj_set_style_text_color(title, lv_color_hex(t->dim), 0);
     lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
     lv_obj_set_width(title, LV_PCT(100));
@@ -129,6 +140,27 @@ void scan_tile_set(scan_tile_t *t, const char *primary, int total, scan_severity
 
 lv_obj_t *scan_tile_get_obj(scan_tile_t *t) {
     return t ? t->card : NULL;
+}
+
+void scan_tile_set_scanning(scan_tile_t *t, bool scanning, bool phase) {
+    if (!t || !t->card || !lv_obj_is_valid(t->card)) return;
+    if (t->last_scanning == scanning && (!scanning || t->last_phase == phase)) return;
+    t->last_scanning = scanning;
+    t->last_phase = phase;
+
+    if (scanning) {
+        // Pulse: alternate a bright full accent border with the thin resting one.
+        // The caller flips `phase` on its periodic tick to animate it.
+        lv_obj_set_style_border_color(t->card, lv_color_hex(phase ? t->accent : t->dim), 0);
+        lv_obj_set_style_border_width(t->card, phase ? 4 : 2, 0);
+        lv_obj_set_style_border_side(t->card, phase ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_LEFT, 0);
+    } else {
+        // Restore the resting look. scan_tile_set() owns the severity color, so
+        // invalidate its cache to force a repaint on the next update.
+        lv_obj_set_style_border_width(t->card, 2, 0);
+        lv_obj_set_style_border_side(t->card, LV_BORDER_SIDE_LEFT, 0);
+        t->last_sev = (scan_severity_t)-1;
+    }
 }
 
 void scan_tile_destroy(scan_tile_t *t) {

@@ -14,6 +14,7 @@
 #include "core/system_manager.h"   // xTaskCreate_psram
 #include "core/callbacks.h"        // start/stop_pineap_detection
 #include "gui/scan_report.h"       // scan_report_accumulate + SCAT_*
+#include "scans/wifi/camera_detect.h"
 #include "managers/display_manager.h" // display_manager_signal_ble_detection
 #include "managers/wifi_manager.h"
 #include "managers/flock_detector_manager.h"
@@ -35,6 +36,10 @@ static const char *TAG = "scan_sched";
 
 static volatile bool s_run = false;
 static volatile int  s_focus = -1;   // scan_category_id_t, or -1 for round-robin
+// Which category is scanning right now (-1 between phases). The dashboard reads
+// this to pulse the active tile, so a 0 means "nothing found" rather than
+// "not scanned yet".
+static volatile int  s_current = -1;
 static TaskHandle_t  s_task = NULL;
 
 #define PHASE_DELAY()   vTaskDelay(pdMS_TO_TICKS(SCAN_PHASE_DWELL_MS))
@@ -56,6 +61,7 @@ static void accumulate_ble(scan_category_id_t cat) {
 // Run one category's scan window, then snapshot it into the session accumulator.
 static void run_phase(scan_category_id_t cat) {
     if (!s_run) return;
+    s_current = (int)cat;
     switch (cat) {
     case SCAT_WIFI: {
         // AP scan via the ap_scan module (feeds ap_scan_get_count / results).
@@ -95,6 +101,10 @@ static void run_phase(scan_category_id_t cat) {
         (void)flock_detector_start();
         PHASE_DELAY();
         scan_report_accumulate(SCAT_FLOCK);
+        // The flock sniffer also feeds camera_detect while it is promiscuous;
+        // fold in the AP/station lists too, then publish. No radio time of its own.
+        camera_detect_sweep_wifi_lists();
+        scan_report_accumulate(SCAT_CAMERAS);
         (void)flock_detector_stop();
         GAP_DELAY();
         break;
@@ -124,6 +134,7 @@ static void run_phase(scan_category_id_t cat) {
     default:
         break;
     }
+    s_current = -1;
 }
 
 static void scan_scheduler_task(void *arg) {
@@ -195,6 +206,8 @@ void scan_scheduler_stop(void) {
 bool scan_scheduler_is_running(void) {
     return s_run;
 }
+
+int scan_scheduler_current_category(void) { return s_current; }
 
 void scan_scheduler_set_focus(int category) {
     s_focus = category;

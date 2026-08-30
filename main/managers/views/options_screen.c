@@ -21,6 +21,7 @@
 #include "managers/views/channel_congestion_screen.h"
 #include "managers/views/packet_monitor_screen.h"
 #include "managers/views/wardriving_screen.h"
+#include "managers/views/wardrive_dashboard_screen.h"
 #include "managers/wigle_manager.h"
 #include "managers/config_manager.h"
 #include "managers/settings_sd_backup.h"
@@ -5904,8 +5905,8 @@ void option_event_cb(lv_event_t *e) {
 
 
     else if (strcmp(Selected_Option, "Start Wardriving") == 0) {
-        wardriving_view_set_scan_mode(true);
-        display_manager_switch_view(&wardriving_view);
+        wardrive_dashboard_set_ble_mode(false);
+        display_manager_switch_view(&wardrive_dashboard_view);
         view_switched = true;
     }
 
@@ -6134,8 +6135,8 @@ void option_event_cb(lv_event_t *e) {
 
     else if (strcmp(Selected_Option, "BLE Wardriving") == 0) {
 #ifndef CONFIG_IDF_TARGET_ESP32S2
-        wardriving_view_set_ble_mode(true);
-        display_manager_switch_view(&wardriving_view);
+        wardrive_dashboard_set_ble_mode(true);
+        display_manager_switch_view(&wardrive_dashboard_view);
         view_switched = true;
 #else
         error_popup_create("Device Does not Support Bluetooth...");

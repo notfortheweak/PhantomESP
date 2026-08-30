@@ -25,6 +25,7 @@
 #include "managers/flock_detector_manager.h"
 #include "scans/wifi/ap_scan.h"
 #include "scans/wifi/station_scan.h"
+#include "scans/wifi/camera_detect.h"
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "scans/ble/flipper_scan.h"
 #include "scans/ble/airtag_scan.h"
@@ -49,8 +50,9 @@ static int s_sx, s_sy, s_lx, s_ly;
 static uint32_t s_saved_timeout = 0;
 static bool s_screen_forced = false;
 
-static void add_tile(lv_obj_t *content, const char *label, scan_category_id_t cat) {
-    scan_tile_t *t = scan_tile_create(content, label);
+static void add_tile(lv_obj_t *content, const char *label, const char *icon,
+                     scan_category_id_t cat) {
+    scan_tile_t *t = scan_tile_create(content, label, icon);
     if (!t) return;
     lv_obj_set_width(scan_tile_get_obj(t), LV_PCT(48));
     if (s_ntiles < MAX_TILES) { s_tiles[s_ntiles].tile = t; s_tiles[s_ntiles].cat = cat; s_ntiles++; }
@@ -65,6 +67,12 @@ static scan_severity_t sev_for(scan_category_id_t cat, int count) {
     case SCAT_PINEAP:
     case SCAT_FLIPPERS:
         return SCAN_SEV_THREAT;
+    case SCAT_CAMERAS:
+        // Ordinary IP cameras are everywhere, so they stay amber; only targeted
+        // surveillance platforms (ALPR / bodycam / cloud) escalate to red, which
+        // keeps a Flock or Axon hit from being lost among shop cameras.
+        return camera_detect_get_targeted_count() > 0 ? SCAN_SEV_THREAT
+                                                      : SCAN_SEV_PRESENT;
     default:                    // WiFi, AirTags, BLE
         return SCAN_SEV_PRESENT;
     }
@@ -76,9 +84,15 @@ static scan_severity_t sev_for(scan_category_id_t cat, int count) {
 // A:<access points> S:<stations>.
 static void update_cb(lv_timer_t *timer) {
     (void)timer;
+    // Flip each tick so the active tile alternates -> a ~1Hz pulse at 500ms.
+    static bool pulse_phase = false;
+    pulse_phase = !pulse_phase;
+    int scanning_cat = scan_scheduler_current_category();
+
     char primary[24];
     for (int i = 0; i < s_ntiles; i++) {
         scan_category_id_t cat = s_tiles[i].cat;
+        scan_tile_set_scanning(s_tiles[i].tile, (int)cat == scanning_cat, pulse_phase);
         int active = scan_report_active_count(cat);
         int total = scan_report_total_count(cat);
         if (cat == SCAT_WIFI) {
@@ -143,14 +157,15 @@ static void scan_dashboard_create(void) {
     lv_label_set_text(bl, LV_SYMBOL_LEFT "  Menu");
     lv_obj_set_style_text_color(bl, lv_color_hex(text), 0);
 
-    add_tile(content, "WiFi", SCAT_WIFI);
-    add_tile(content, "Drones", SCAT_DRONES);
-    add_tile(content, "Flock Cam", SCAT_FLOCK);
-    add_tile(content, "PineAP", SCAT_PINEAP);
+    add_tile(content, "WiFi",      LV_SYMBOL_WIFI,      SCAT_WIFI);
+    add_tile(content, "Drones",    LV_SYMBOL_UP,        SCAT_DRONES);
+    add_tile(content, "Cameras",   LV_SYMBOL_VIDEO,     SCAT_CAMERAS);
+    add_tile(content, "Flock Cam", LV_SYMBOL_EYE_OPEN,  SCAT_FLOCK);
+    add_tile(content, "PineAP",    LV_SYMBOL_WARNING,   SCAT_PINEAP);
 #ifndef CONFIG_IDF_TARGET_ESP32S2
-    add_tile(content, "Flippers", SCAT_FLIPPERS);
-    add_tile(content, "AirTags", SCAT_AIRTAGS);
-    add_tile(content, "BLE", SCAT_BLE);
+    add_tile(content, "Flippers",  LV_SYMBOL_USB,       SCAT_FLIPPERS);
+    add_tile(content, "AirTags",   LV_SYMBOL_GPS,       SCAT_AIRTAGS);
+    add_tile(content, "BLE",       LV_SYMBOL_BLUETOOTH, SCAT_BLE);
 #endif
 
     scan_scheduler_start();   // idempotent; keeps running across drill-in

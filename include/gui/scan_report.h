@@ -14,7 +14,8 @@
 typedef enum {
     SCAT_WIFI = 0,   // access points + associated stations
     SCAT_DRONES,
-    SCAT_FLOCK,
+    SCAT_FLOCK,      // Flock Safety ALPR (dedicated detector)
+    SCAT_CAMERAS,    // surveillance cameras by vendor OUI (ambient + targeted)
     SCAT_PINEAP,
     SCAT_FLIPPERS,
     SCAT_AIRTAGS,

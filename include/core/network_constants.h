@@ -83,6 +83,40 @@ bool is_pineapple_oui(const uint8_t *mac);
 // Check if a MAC address matches a known DJI OUI
 bool is_dji_oui(const uint8_t *mac);
 
+// ----------------------------------------------------------------------------
+// Surveillance + drone vendor OUI table
+// ----------------------------------------------------------------------------
+// Curated from the authoritative IEEE MA-L registry (standards-oui.ieee.org),
+// matched on exact organization names. The embedded vendor DB (core/ouis.bin) is
+// a subset that contains none of these vendors, so runtime name lookup cannot
+// identify them -- this table is the only source. Never add an OUI that has not
+// been verified against the registry: a wrong entry turns ordinary hardware into
+// a false "camera"/"drone" alert.
+typedef enum {
+    SURV_TIER_AMBIENT = 0,  // ordinary IP cameras -- common, informational (amber)
+    SURV_TIER_TARGETED,     // ALPR / bodycam / cloud-surveillance platforms (red)
+    SURV_TIER_DRONE,        // UAV manufacturers
+} surveil_tier_t;
+
+typedef struct {
+    uint32_t oui;      // packed 24-bit OUI, 0xAABBCC
+    uint8_t  vendor;   // index into SURVEIL_VENDOR_NAMES
+    uint8_t  tier;     // surveil_tier_t
+} surveil_oui_t;
+
+extern const surveil_oui_t SURVEIL_OUIS[];      // sorted by oui (binary search)
+extern const size_t        SURVEIL_OUI_COUNT;
+extern const char *const   SURVEIL_VENDOR_NAMES[];
+extern const size_t        SURVEIL_VENDOR_COUNT;
+
+// Look up a MAC's first 3 bytes. On a hit fills vendor name / tier and returns
+// true. Safe to call from an ISR-context sniffer: no allocation, no blocking.
+bool surveil_oui_lookup(const uint8_t *mac, const char **vendor_out, uint8_t *tier_out);
+
+// Convenience wrapper: true only for SURV_TIER_DRONE entries (any UAV vendor,
+// not just DJI). Complements is_dji_oui().
+bool drone_oui_lookup(const uint8_t *mac, const char **vendor_out);
+
 // ============================================================================
 // SPECIAL MAC ADDRESSES
 // ============================================================================

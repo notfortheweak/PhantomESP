@@ -2258,6 +2258,9 @@ static bool touch_move_events_enabled_for_view_name(const char *view_name) {
           strcmp(view_name, "Live Scan") == 0 ||
           strcmp(view_name, "Scan List") == 0 ||
           strcmp(view_name, "Signal") == 0 ||
+          strcmp(view_name, "Wardrive") == 0 ||
+          strcmp(view_name, "Wardrive List") == 0 ||
+          strcmp(view_name, "Wardrive Detail") == 0 ||
           strcmp(view_name, "Main Menu") == 0 ||
           strcmp(view_name, "Apps Menu") == 0 ||
           strcmp(view_name, "SD Browser") == 0 ||

@@ -154,6 +154,21 @@ void handle_aerial_stop_cmd(int argc, char **argv) {
     aerial_detector_untrack_device();
 }
 
+void handle_aerial_diag_cmd(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "on") == 0) {
+        aerial_detector_set_diagnostics(true);
+        glog("Aerial diagnostics ON\n");
+        glog("Logs unique transmitter OUIs, DJI/DroneID hits, per-phase tallies.\n");
+        glog("Open the Drones tile (focus mode) for continuous scanning.\n");
+    } else if (argc > 1 && strcmp(argv[1], "off") == 0) {
+        aerial_detector_set_diagnostics(false);
+        glog("Aerial diagnostics OFF\n");
+    } else {
+        glog("Usage: aerialdiag [on|off]   (currently %s)\n",
+             aerial_detector_diagnostics_enabled() ? "on" : "off");
+    }
+}
+
 void handle_flock_scan_cmd(int argc, char **argv) {
     if (flock_detector_is_running()) {
         glog("Flock detection is already running. Use 'flockstop' to stop first.\n");

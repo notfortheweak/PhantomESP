@@ -86,8 +86,24 @@ typedef enum {
 } odid_status_t;
 
 // dji droneid identifiers (proprietary protocol)
-#define DJI_WIFI_OUI_1 0x60, 0x60, 0x1F  // dji technology co ltd
-#define DJI_WIFI_OUI_2 0x5C, 0xE8, 0x83  // dji technology co ltd
+// NOTE: drone *hardware* OUIs live in one place only — core/network_constants.c
+// (DJI_OUIS[]/is_dji_oui() for DJI's 15 registered prefixes, and the broader
+// SURVEIL_OUIS[]/drone_oui_lookup() covering every UAV vendor). Don't re-declare
+// them here; the pair that used to live at this spot was stale and one of them
+// (5C:E8:83) is actually Huawei, which flagged ordinary Huawei gear as a drone.
+//
+// This is the DJI DroneID *payload* signature, which is what a flying DJI drone
+// actually broadcasts: an 802.11 vendor-specific IE (id 0xDD) carrying OUI
+// 26:37:12, then vendor_type/unk1/unk2/subcommand. subcommand 0x10 = flight
+// telemetry + location, 0x11 = flight purpose / operator-entered info.
+// (Layout per Kismet's dot11_ie_221_dji_droneid parser.) Matching on this rather
+// than the transmitter MAC is what catches drones that randomize their MAC or
+// transmit from a radio-chipset OUI instead of a DJI-owned one.
+#define DJI_DRONEID_IE_OUI_0 0x26
+#define DJI_DRONEID_IE_OUI_1 0x37
+#define DJI_DRONEID_IE_OUI_2 0x12
+#define DJI_DRONEID_SUBCMD_FLIGHT_REG     0x10
+#define DJI_DRONEID_SUBCMD_FLIGHT_PURPOSE 0x11
 #define DJI_BLE_SERVICE_UUID 0xFFE0      // dji characteristic service
 
 // wifi network patterns from manufacturers (validated 2024)
@@ -146,6 +162,18 @@ static bool enable_dji = true;
 static bool enable_networks = true;
 static bool enable_telemetry = false;  // requires uart monitoring
 
+// Diagnostics (opt-in, `aerialdiag on`). Detection is otherwise silent, which
+// makes "my drone isn't showing" impossible to tell apart from "nothing was
+// heard". When on, the sniffer reports every unique transmitter OUI it hears
+// plus each DJI OUI / DroneID-IE hit, and each phase prints a frame tally.
+// Rate-limited and de-duplicated so it can't flood the serial/LVGL path.
+static bool diag_enabled = false;
+#define DIAG_OUI_MAX 32
+static uint8_t diag_seen_ouis[DIAG_OUI_MAX][3];
+static uint8_t diag_seen_oui_count = 0;
+static uint32_t diag_frames = 0, diag_mgmt = 0, diag_dji_oui_hits = 0, diag_droneid_hits = 0;
+static uint32_t diag_last_log_ms = 0;
+
 // callback
 static AerialDetectorCallback user_callback = NULL;
 static void *user_callback_data = NULL;
@@ -164,7 +192,6 @@ static void build_allowed_channels_list(void);
 static AerialDevice* find_or_create_device(const uint8_t *mac);
 static void decode_opendroneid_message(AerialDevice *device, const uint8_t *data, size_t len);
 static void decode_dji_message(AerialDevice *device, const uint8_t *data, size_t len);
-static void decode_dji_droneid(AerialDevice *device, const uint8_t *content, int content_len);
 static void check_drone_network(AerialDevice *device, const char *ssid);
 static void notify_callback(AerialDevice *device);
 static void start_wifi_phase(void);
@@ -376,7 +403,18 @@ static void stop_wifi_phase(void) {
     esp_wifi_stop();
     esp_wifi_deinit();
     wifi_scan_phase = false;
-    
+
+    if (diag_enabled) {
+        // The decisive line: zero mgmt frames means we never heard the drone at
+        // all (wrong channel, or it isn't emitting 802.11); frames but no hits
+        // means it's transmitting something without a DJI signature.
+        glog("[AERIAL] phase: %lu frames (%lu mgmt), DJI-OUI %lu, DroneID %lu, devices %d\n",
+             (unsigned long)diag_frames, (unsigned long)diag_mgmt,
+             (unsigned long)diag_dji_oui_hits, (unsigned long)diag_droneid_hits,
+             aerial_detector_get_device_count());
+        diag_frames = diag_mgmt = 0;
+    }
+
     ESP_LOGI(TAG, "wifi scan phase stopped");
 }
 
@@ -677,18 +715,42 @@ bool aerial_detector_is_scanning(void) {
     return is_scanning;
 }
 
+// Report a transmitter OUI once per session (diag only). Tells us what the drone
+// is actually sending if neither the OUI nor the DroneID signature matched.
+static void diag_note_oui(const uint8_t *mac, int channel, int rssi) {
+    for (int i = 0; i < diag_seen_oui_count; i++) {
+        if (memcmp(diag_seen_ouis[i], mac, 3) == 0) return;
+    }
+    if (diag_seen_oui_count >= DIAG_OUI_MAX) return;
+    memcpy(diag_seen_ouis[diag_seen_oui_count++], mac, 3);
+    glog("[AERIAL] OUI %02X:%02X:%02X  ch%d  %ddBm%s\n", mac[0], mac[1], mac[2],
+         channel, rssi, is_dji_oui(mac) ? "  <-- DJI" : "");
+}
+
 static void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type) {
     if (!enable_opendroneid && !enable_dji && !enable_networks) {
         return;
     }
-    
+
     wifi_promiscuous_pkt_t *pkt = (wifi_promiscuous_pkt_t *)buf;
     uint8_t *payload = pkt->payload;
     int len = pkt->rx_ctrl.sig_len;
-    
+
     if (len < 40) return;
-    
+
     uint8_t *src_mac = &payload[10];
+
+    if (diag_enabled) {
+        diag_frames++;
+        uint8_t ftype = payload[0] & 0xFC;
+        if (ftype == 0x80 || ftype == 0x50) diag_mgmt++;
+        // Rate-limit the per-OUI lines so a busy band can't flood serial.
+        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+        if ((now - diag_last_log_ms) >= 300) {
+            diag_last_log_ms = now;
+            diag_note_oui(src_mac, pkt->rx_ctrl.channel, pkt->rx_ctrl.rssi);
+        }
+    }
     AerialDevice *device = NULL;
     bool detected = false;
 
@@ -735,40 +797,59 @@ static void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type) {
         }
     }
     
-    // check for dji specific patterns — match the transmitter MAC against the
-    // full set of DJI-registered OUIs (Mini/Air/Mavic/etc.), not a hardcoded pair.
-    if (enable_dji && is_dji_oui(src_mac)) {
-        ENSURE_DEVICE();
-        device->type = AERIAL_TYPE_DJI_WIFI;
-        snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "DJI");
-        decode_dji_message(device, payload, len);
-        detected = true;
-    }
-
-    // DJI DroneID vendor IE (OUI 26:37:12) in beacon frames. This is the
-    // MAC-agnostic signature: it identifies a DJI drone by its DroneID broadcast
-    // regardless of the transmitter MAC (newer models vary/randomize it), and
-    // yields the serial number + live location. Kismet dot11_ie_221_dji_droneid.
-    if (enable_dji && payload[0] == 0x80) {
+    // DJI DroneID vendor IE (the signature a flying DJI drone actually emits).
+    // Matched on payload, not MAC, so it still catches a drone that randomizes
+    // its transmitter MAC or transmits from a radio-chipset OUI. Beacons (0x80)
+    // and probe responses (0x50) both carry it.
+    if (enable_dji && (payload[0] == 0x80 || payload[0] == 0x50)) {
         int offset = 36;
-        while (offset + 5 < len) {
+        while (offset + 1 < len) {
             uint8_t ie_type = payload[offset];
             uint8_t ie_len = payload[offset + 1];
-            if (ie_type == 0xDD && ie_len >= 7 &&
-                payload[offset + 2] == 0x26 && payload[offset + 3] == 0x37 &&
-                payload[offset + 4] == 0x12) {
+
+            // Need the 3-byte OUI plus vendor_type/unk1/unk2/subcommand behind it.
+            if (ie_type == 0xDD && ie_len >= 7 && (offset + 8) < len &&
+                payload[offset + 2] == DJI_DRONEID_IE_OUI_0 &&
+                payload[offset + 3] == DJI_DRONEID_IE_OUI_1 &&
+                payload[offset + 4] == DJI_DRONEID_IE_OUI_2) {
+                uint8_t subcommand = payload[offset + 8];
                 ENSURE_DEVICE();
-                int avail = len - (offset + 2);       // bytes available from OUI onward
-                if ((int)ie_len < avail) avail = ie_len;
-                decode_dji_droneid(device, &payload[offset + 2], avail);
+                device->type = AERIAL_TYPE_DJI_WIFI;
+                snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "DJI");
                 detected = true;
+                if (diag_enabled) {
+                    diag_droneid_hits++;
+                    glog("[AERIAL] DroneID IE from %s ch%d %ddBm subcmd 0x%02X\n",
+                         device->mac, pkt->rx_ctrl.channel, pkt->rx_ctrl.rssi, subcommand);
+                }
+                (void)subcommand;   // telemetry decode (0x10) is a later step
                 break;
             }
+
+            if (ie_len == 0 && ie_type == 0) break;   // padding / malformed
             offset += ie_len + 2;
-            if (offset >= len) break;
         }
     }
 
+    // check for dji specific patterns — match the transmitter MAC against the
+    // full set of DJI-registered OUIs (Mini/Air/Mavic/etc.), not a hardcoded pair.
+    // Transmitter-MAC match against every UAV vendor in the IEEE-derived table
+    // (DJI's 15 prefixes plus Parrot, Skydio, Teal, Freefly, PowerVision), so a
+    // non-DJI drone is identified and named rather than ignored.
+    const char *drone_vendor = NULL;
+    if (enable_dji && drone_oui_lookup(src_mac, &drone_vendor)) {
+        ENSURE_DEVICE();
+        device->type = AERIAL_TYPE_DJI_WIFI;
+        snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "%s", drone_vendor);
+        if (is_dji_oui(src_mac)) decode_dji_message(device, payload, len);
+        detected = true;
+        if (diag_enabled) {
+            diag_dji_oui_hits++;
+            glog("[AERIAL] drone OUI hit %s (%s) ch%d %ddBm\n", device->mac,
+                 drone_vendor, pkt->rx_ctrl.channel, pkt->rx_ctrl.rssi);
+        }
+    }
+    
     // check for drone network ssids (beacon frames)
     if (enable_networks && payload[0] == 0x80) {
         int offset = 36;
@@ -1001,61 +1082,6 @@ static void decode_dji_message(AerialDevice *device, const uint8_t *data, size_t
     }
 }
 
-// Parse a DJI DroneID vendor-specific IE. `content` points at the OUI (26:37:12)
-// and `content_len` is the IE's vendor content length. This is the MAC-agnostic
-// DroneID signature: field offsets follow Kismet's dot11_ie_221_dji_droneid
-// (offsets relative to the OUI start). Subcommand 0x10 carries the flight
-// telemetry + 16-byte ASCII serial number.
-static void decode_dji_droneid(AerialDevice *device, const uint8_t *content, int content_len) {
-    device->type = AERIAL_TYPE_DJI_WIFI;
-    snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "DJI");
-    device->messages_seen++;
-
-    if (content_len < 7) {
-        if (device->description[0] == '\0' || strcmp(device->description, "N/A") == 0)
-            snprintf(device->description, AERIAL_DESC_MAX_LEN, "DJI DroneID");
-        return;
-    }
-
-    uint8_t subcmd = content[6];  // 0x10 = telemetry+serial, 0x11 = user info
-    if (subcmd == 0x10 && content_len >= 28) {
-        // 16-byte ASCII serial number at content offset 12
-        char serial[17];
-        int n = 0;
-        for (; n < 16; n++) {
-            uint8_t ch = content[12 + n];
-            if (ch < 32 || ch > 126) break;
-            serial[n] = (char)ch;
-        }
-        serial[n] = '\0';
-        if (n > 0) {
-            snprintf(device->device_id, AERIAL_ID_MAX_LEN, "%s", serial);
-            snprintf(device->description, AERIAL_DESC_MAX_LEN, "DJI DroneID SN:%s", serial);
-        } else {
-            snprintf(device->description, AERIAL_DESC_MAX_LEN, "DJI DroneID");
-        }
-
-        // Location: raw_lon @28, raw_lat @32 (s32 LE, radians*1e7); /174533.0 = deg
-        if (content_len >= 36) {
-            int32_t raw_lon = (int32_t)((uint32_t)content[28] | ((uint32_t)content[29] << 8) |
-                                        ((uint32_t)content[30] << 16) | ((uint32_t)content[31] << 24));
-            int32_t raw_lat = (int32_t)((uint32_t)content[32] | ((uint32_t)content[33] << 8) |
-                                        ((uint32_t)content[34] << 16) | ((uint32_t)content[35] << 24));
-            double lon = (double)raw_lon / 174533.0;
-            double lat = (double)raw_lat / 174533.0;
-            if ((raw_lat != 0 || raw_lon != 0) &&
-                lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0) {
-                device->latitude = lat;
-                device->longitude = lon;
-                device->has_location = true;
-                device->is_tracked = true;
-            }
-        }
-    } else {
-        snprintf(device->description, AERIAL_DESC_MAX_LEN, "DJI DroneID");
-    }
-}
-
 static void check_drone_network(AerialDevice *device, const char *ssid) {
     if (!ssid || strlen(ssid) == 0) return;
     
@@ -1259,6 +1285,19 @@ void aerial_detector_enable_dji_detection(bool enable) {
 
 void aerial_detector_enable_network_detection(bool enable) {
     enable_networks = enable;
+}
+
+void aerial_detector_set_diagnostics(bool enable) {
+    diag_enabled = enable;
+    // Fresh tallies + a fresh unique-OUI set each time it's switched on, so a
+    // diagnostic run reflects only what was heard during that run.
+    diag_seen_oui_count = 0;
+    diag_frames = diag_mgmt = diag_dji_oui_hits = diag_droneid_hits = 0;
+    diag_last_log_ms = 0;
+}
+
+bool aerial_detector_diagnostics_enabled(void) {
+    return diag_enabled;
 }
 
 void aerial_detector_enable_telemetry_detection(bool enable) {

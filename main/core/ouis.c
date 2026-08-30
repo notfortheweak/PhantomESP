@@ -1,4 +1,5 @@
 #include "core/ouis.h"
+#include "core/network_constants.h"   // is_dji_oui() — DJI is absent from ouis.bin
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -113,6 +114,14 @@ static bool lookup_vendor(const uint8_t oui3[3], char *out_vendor, size_t out_sz
         }
         if (cmp < 0) lo = (uint16_t)(mid + 1);
         else         hi = mid;
+    }
+    // The embedded IEEE table is a curated subset and contains no DJI entries, so
+    // drone hardware would otherwise show up as an unknown vendor everywhere
+    // (WiFi AP list, station list, wardriving). Fall back to the hardcoded DJI
+    // prefixes so DJI kit is named wherever an OUI is resolved.
+    if (is_dji_oui(oui3)) {
+        snprintf(out_vendor, out_sz, "SZ DJI Technology");
+        return true;
     }
     return false;
 }

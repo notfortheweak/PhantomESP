@@ -337,6 +337,12 @@ const uint8_t DJI_OUIS[][3] = {
     {0x88, 0x29, 0x85},  // SZ DJI Technology
     {0x8C, 0x58, 0x23},  // SZ DJI Technology
     {0xE4, 0x7A, 0x2C},  // SZ DJI Technology
+    // Additional DJI corporate entities in the IEEE registry (verified 2026-08):
+    {0x20, 0x1F, 0x55},  // DJI Osmo Technology
+    {0x34, 0x91, 0xF0},  // DJI Baiwang Technology
+    {0x9C, 0x5A, 0x8A},  // DJI Baiwang Technology
+    {0xEC, 0x72, 0xF7},  // DJI Baiwang Technology
+    {0xF8, 0x40, 0x68},  // SZ DJI Ronin Technology
 };
 const size_t DJI_OUI_COUNT = sizeof(DJI_OUIS) / sizeof(DJI_OUIS[0]);
 
@@ -433,4 +439,261 @@ bool is_database_port(uint16_t port) {
 
 bool is_file_sharing_port(uint16_t port) {
     return port == 445 || port == 139;
+}
+
+// ----------------------------------------------------------------------------
+// Surveillance + drone vendor OUIs (see header for the rules)
+// ----------------------------------------------------------------------------
+// Generated from the IEEE MA-L registry (standards-oui.ieee.org/oui/oui.csv) by
+// exact organization-name match, 213 entries across 33 vendors. Deliberately
+// EXCLUDED to avoid false positives: Ubiquiti (its ~48 OUIs are overwhelmingly
+// WiFi APs, not cameras), Sony's ~86 consumer OUIs (only the 5 security-camera
+// prefixes are listed), Bosch's automotive/thermotech arms, and Motorola
+// Mobility phones. Autel Robotics, Yuneec, Anduril, BRINC, Hubsan, Walkera and
+// EHang have NO IEEE registration, so they are absent rather than guessed at.
+const char *const SURVEIL_VENDOR_NAMES[] = {"Flock Safety", "Axon", "Verkada", "Avigilon", "Genetec", "Hikvision", "Dahua", "Axis Comm", "Hanwha", "Bosch Sec", "Uniview", "Vivotek", "Sony", "i-PRO", "Arecont", "ACTi", "Amcrest", "Reolink", "Lorex", "Arlo", "Wyze", "Ring", "Mobotix", "GeoVision", "Digital Watchdog", "Honeywell Vid", "FLIR", "DJI", "Parrot", "Skydio", "Teal Drones", "Freefly", "PowerVision"};
+const size_t SURVEIL_VENDOR_COUNT = sizeof(SURVEIL_VENDOR_NAMES) / sizeof(SURVEIL_VENDOR_NAMES[0]);
+
+const surveil_oui_t SURVEIL_OUIS[] = {
+    {0x000131, 9, 0},
+    {0x00014A, 12, 0},
+    {0x0002D1, 11, 0},
+    {0x0003C5, 22, 0},
+    {0x000463, 9, 0},
+    {0x000918, 8, 0},
+    {0x000A13, 25, 0},
+    {0x000F7C, 15, 0},
+    {0x001017, 9, 0},
+    {0x00121C, 28, 2},
+    {0x001356, 26, 0},
+    {0x0013A9, 12, 0},
+    {0x0013E2, 23, 0},
+    {0x001885, 3, 1},
+    {0x001A07, 14, 0},
+    {0x001A80, 12, 0},
+    {0x001B86, 9, 0},
+    {0x001BD8, 26, 0},
+    {0x001F54, 18, 0},
+    {0x001F55, 25, 0},
+    {0x0025DF, 1, 1},
+    {0x00267E, 28, 2},
+    {0x004040, 21, 0},
+    {0x00407F, 26, 0},
+    {0x00408C, 7, 0},
+    {0x00651E, 16, 0},
+    {0x00B463, 21, 0},
+    {0x00BC99, 5, 0},
+    {0x00BF15, 4, 1},
+    {0x00E0F2, 19, 0},
+    {0x040312, 5, 0},
+    {0x04A85A, 27, 2},
+    {0x04EECD, 5, 0},
+    {0x083BC1, 5, 0},
+    {0x085411, 5, 0},
+    {0x08A189, 5, 0},
+    {0x08CC81, 5, 0},
+    {0x08EDED, 6, 0},
+    {0x0C75D2, 5, 0},
+    {0x0C9AE6, 27, 2},
+    {0x0CBF15, 4, 1},
+    {0x1012FB, 5, 0},
+    {0x14A78B, 6, 0},
+    {0x14BA88, 10, 0},
+    {0x1868CB, 5, 0},
+    {0x187F88, 21, 0},
+    {0x188025, 5, 0},
+    {0x201F55, 27, 2},
+    {0x202C05, 6, 0},
+    {0x240F9B, 5, 0},
+    {0x2428FD, 5, 0},
+    {0x242BD6, 21, 0},
+    {0x2432AE, 5, 0},
+    {0x244845, 5, 0},
+    {0x24526A, 6, 0},
+    {0x24B105, 5, 0},
+    {0x2857BE, 5, 0},
+    {0x2CA59C, 5, 0},
+    {0x2CAA8E, 20, 0},
+    {0x30DDAA, 6, 0},
+    {0x30F028, 9, 0},
+    {0x30F9ED, 12, 0},
+    {0x340962, 5, 0},
+    {0x343EA4, 21, 0},
+    {0x3491F0, 27, 2},
+    {0x34D262, 27, 2},
+    {0x381D14, 29, 2},
+    {0x38AF29, 6, 0},
+    {0x3C1BF8, 5, 0},
+    {0x3CE36B, 6, 0},
+    {0x3CEF8C, 6, 0},
+    {0x407AA4, 6, 0},
+    {0x40ACBF, 5, 0},
+    {0x40B570, 5, 0},
+    {0x4419B6, 5, 0},
+    {0x4447CC, 5, 0},
+    {0x44A642, 5, 0},
+    {0x44B423, 8, 0},
+    {0x481CB9, 27, 2},
+    {0x486264, 19, 0},
+    {0x48785B, 5, 0},
+    {0x48EA63, 10, 0},
+    {0x4C11BF, 6, 0},
+    {0x4C1F86, 5, 0},
+    {0x4C43F6, 27, 2},
+    {0x4C62DF, 5, 0},
+    {0x4C99E8, 6, 0},
+    {0x4CBD8F, 5, 0},
+    {0x4CF5DC, 5, 0},
+    {0x50E467, 21, 0},
+    {0x50E538, 5, 0},
+    {0x547D40, 32, 2},
+    {0x548C81, 5, 0},
+    {0x54C415, 5, 0},
+    {0x54E019, 21, 0},
+    {0x5803FB, 5, 0},
+    {0x5850ED, 5, 0},
+    {0x58B858, 27, 2},
+    {0x5C345B, 5, 0},
+    {0x5C475E, 21, 0},
+    {0x5CF51A, 6, 0},
+    {0x60601F, 27, 2},
+    {0x649A63, 21, 0},
+    {0x64DB8B, 5, 0},
+    {0x64FD29, 6, 0},
+    {0x686DBC, 5, 0},
+    {0x6C1C71, 6, 0},
+    {0x6CF17E, 10, 0},
+    {0x701AD5, 3, 1},
+    {0x743FC2, 5, 0},
+    {0x74C929, 6, 0},
+    {0x7C78B2, 20, 0},
+    {0x80482C, 20, 0},
+    {0x80489F, 5, 0},
+    {0x807C62, 5, 0},
+    {0x80BEAF, 5, 0},
+    {0x80F5AE, 5, 0},
+    {0x849459, 5, 0},
+    {0x849A40, 5, 0},
+    {0x88263F, 10, 0},
+    {0x882985, 27, 2},
+    {0x88DE39, 5, 0},
+    {0x8C22D2, 5, 0},
+    {0x8C5823, 27, 2},
+    {0x8CE748, 5, 0},
+    {0x8CE9B4, 6, 0},
+    {0x9002A9, 6, 0},
+    {0x9003B7, 28, 2},
+    {0x903AE6, 28, 2},
+    {0x90486C, 21, 0},
+    {0x94E1AC, 5, 0},
+    {0x988B0A, 5, 0},
+    {0x989DE5, 5, 0},
+    {0x98DF82, 5, 0},
+    {0x98F112, 5, 0},
+    {0x98F9CC, 6, 0},
+    {0x9C1463, 6, 0},
+    {0x9C5A8A, 27, 2},
+    {0x9C7613, 21, 0},
+    {0x9C8ECD, 16, 0},
+    {0xA0143D, 28, 2},
+    {0xA06032, 16, 0},
+    {0xA0BD1D, 6, 0},
+    {0xA0FF0C, 5, 0},
+    {0xA41162, 19, 0},
+    {0xA41437, 5, 0},
+    {0xA42902, 5, 0},
+    {0xA44BD9, 5, 0},
+    {0xA4A459, 5, 0},
+    {0xA4D5C2, 5, 0},
+    {0xA8CA87, 6, 0},
+    {0xA8DC5A, 24, 0},
+    {0xAC9FC3, 21, 0},
+    {0xACB92F, 5, 0},
+    {0xACCB51, 5, 0},
+    {0xACCC8E, 7, 0},
+    {0xB009DA, 21, 0},
+    {0xB030C8, 30, 2},
+    {0xB0FF0D, 5, 0},
+    {0xB41E52, 0, 1},
+    {0xB44C3B, 6, 0},
+    {0xB4A382, 5, 0},
+    {0xB8A44F, 7, 0},
+    {0xBC2978, 5, 0},
+    {0xBC325F, 6, 0},
+    {0xBC5E33, 5, 0},
+    {0xBC9B5E, 5, 0},
+    {0xBCAD28, 5, 0},
+    {0xBCBAC2, 5, 0},
+    {0xC0395A, 6, 0},
+    {0xC0517E, 5, 0},
+    {0xC056E3, 5, 0},
+    {0xC06DED, 5, 0},
+    {0xC42F90, 5, 0},
+    {0xC47905, 10, 0},
+    {0xC4AAC4, 6, 0},
+    {0xC4DBAD, 21, 0},
+    {0xC8A702, 5, 0},
+    {0xCC13F3, 5, 0},
+    {0xCC3BFB, 21, 0},
+    {0xD03F27, 20, 0},
+    {0xD42DC5, 13, 0},
+    {0xD4430E, 6, 0},
+    {0xD4E853, 5, 0},
+    {0xDC07F8, 5, 0},
+    {0xDCD26A, 5, 0},
+    {0xE02EFE, 6, 0},
+    {0xE0508B, 6, 0},
+    {0xE0A700, 2, 1},
+    {0xE0BAAD, 5, 0},
+    {0xE0CA3C, 5, 0},
+    {0xE0DF13, 5, 0},
+    {0xE4246C, 6, 0},
+    {0xE43022, 8, 0},
+    {0xE47A2C, 27, 2},
+    {0xE4D58B, 5, 0},
+    {0xE82725, 7, 0},
+    {0xE8A0ED, 5, 0},
+    {0xEC715E, 31, 2},
+    {0xEC71DB, 17, 0},
+    {0xEC72F7, 27, 2},
+    {0xECA971, 5, 0},
+    {0xECC89C, 5, 0},
+    {0xF0C88B, 20, 0},
+    {0xF4B1C2, 6, 0},
+    {0xF84068, 27, 2},
+    {0xF84DFC, 5, 0},
+    {0xF8CE07, 6, 0},
+    {0xFC5F49, 6, 0},
+    {0xFC9C98, 19, 0},
+    {0xFC9FFD, 5, 0},
+    {0xFCB69D, 6, 0},
+    {0xFCF152, 12, 0},
+};
+const size_t SURVEIL_OUI_COUNT = sizeof(SURVEIL_OUIS) / sizeof(SURVEIL_OUIS[0]);
+
+bool surveil_oui_lookup(const uint8_t *mac, const char **vendor_out, uint8_t *tier_out) {
+    if (mac == NULL) return false;
+    uint32_t key = ((uint32_t)mac[0] << 16) | ((uint32_t)mac[1] << 8) | mac[2];
+    size_t lo = 0, hi = SURVEIL_OUI_COUNT;          // table is sorted by oui
+    while (lo < hi) {
+        size_t mid = lo + ((hi - lo) >> 1);
+        uint32_t v = SURVEIL_OUIS[mid].oui;
+        if (v == key) {
+            if (vendor_out) *vendor_out = SURVEIL_VENDOR_NAMES[SURVEIL_OUIS[mid].vendor];
+            if (tier_out) *tier_out = SURVEIL_OUIS[mid].tier;
+            return true;
+        }
+        if (v < key) lo = mid + 1;
+        else         hi = mid;
+    }
+    return false;
+}
+
+bool drone_oui_lookup(const uint8_t *mac, const char **vendor_out) {
+    const char *vendor = NULL;
+    uint8_t tier = 0;
+    if (!surveil_oui_lookup(mac, &vendor, &tier)) return false;
+    if (tier != SURV_TIER_DRONE) return false;
+    if (vendor_out) *vendor_out = vendor;
+    return true;
 }

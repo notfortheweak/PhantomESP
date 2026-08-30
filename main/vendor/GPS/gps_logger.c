@@ -7,6 +7,7 @@
 #include "managers/sd_card_manager.h"
 #include "managers/wigle_manager.h"
 #include "gui/toast.h"
+#include "gui/wardrive_report.h"
 #include "managers/views/terminal_screen.h"
 #include "sys/time.h"
 #include "vendor/GPS/MicroNMEA.h"
@@ -851,6 +852,11 @@ esp_err_t csv_file_open(const char *base_file_name) {
 
 esp_err_t csv_write_data_to_buffer(wardriving_data_t *data) {
     if (!data) return ESP_ERR_INVALID_ARG;
+
+    // Feed the wardriving drill-down accumulator (no-op unless the wardrive
+    // dashboard has allocated its buffer). Runs on the scan thread, same as the
+    // CSV write below — the UI only reads it.
+    wardrive_report_accumulate(data);
 
     char timestamp[24];
     gps_date_t date_to_use = data->gps_date;
