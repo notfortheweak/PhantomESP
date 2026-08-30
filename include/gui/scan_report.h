@@ -14,8 +14,8 @@
 typedef enum {
     SCAT_WIFI = 0,   // access points + associated stations
     SCAT_DRONES,
-    SCAT_FLOCK,      // Flock Safety ALPR (dedicated detector)
-    SCAT_CAMERAS,    // surveillance cameras by vendor OUI (ambient + targeted)
+    SCAT_CAMERAS,    // all surveillance cameras: vendor-OUI matches plus
+                     // Flock Safety ALPR hits from the flock detector
     SCAT_PINEAP,
     SCAT_FLIPPERS,
     SCAT_AIRTAGS,
@@ -57,6 +57,13 @@ const scan_category_t *scan_report_category(scan_category_id_t id);
 // ones as part of the running session total.
 void scan_report_accumulate(scan_category_id_t id);
 void scan_report_reset_session(void);          // forget everything (new session)
+
+// The session table is heap-backed and lives only while Live Scan is open --
+// statically it was the firmware's largest single .bss consumer. Call alloc()
+// before starting the scheduler and free() after stopping it; every accessor is
+// a safe no-op while unallocated.
+void scan_report_alloc(void);
+void scan_report_free(void);
 
 int  scan_report_active_count(scan_category_id_t id);   // seen in latest scan
 int  scan_report_total_count(scan_category_id_t id);    // unique seen this session

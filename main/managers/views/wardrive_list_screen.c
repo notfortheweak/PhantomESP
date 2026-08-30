@@ -6,6 +6,7 @@
 #include "managers/views/wardrive_list_screen.h"
 
 #include "lvgl.h"
+#include "esp_heap_caps.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -62,7 +63,10 @@ static lv_obj_t *s_list_root, *s_list_cont, *s_back_btn, *s_hdr, *s_empty_lbl;
 static lv_timer_t *s_list_timer;
 
 static lv_obj_t *s_rows[MAX_ROWS], *s_row_title[MAX_ROWS], *s_row_sub[MAX_ROWS], *s_row_rssi[MAX_ROWS];
-static wd_seen_t s_rowsig[MAX_ROWS];
+// View-scoped row cache, heap-backed: wd_seen_t[MAX_ROWS] held statically was
+// ~2KB of permanent .bss for a screen that is usually closed. Allocated on
+// create, freed on destroy; only the LVGL task touches it, so no lock.
+static wd_seen_t *s_rowsig = NULL;
 static bool s_rowactive[MAX_ROWS];
 static int s_nrows;
 
@@ -117,6 +121,7 @@ static void list_refresh(lv_timer_t *t) {
     int total = wardrive_report_count(s_kind);
     if (total > MAX_ROWS) total = MAX_ROWS;
     s_nrows = 0;
+    if (!s_rowsig) return;          // allocation failed: render nothing rather than crash
     for (int i = 0; i < total; i++) {
         if (!wardrive_report_get(s_kind, i, &s_rowsig[i], &s_rowactive[i])) break;
         s_nrows++;
@@ -160,6 +165,12 @@ static void wardrive_list_create(void) {
     capture_theme();
     memset(s_rows, 0, sizeof(s_rows));
     s_nrows = 0;
+    if (!s_rowsig) {
+        s_rowsig = heap_caps_calloc(MAX_ROWS, sizeof(wd_seen_t),
+                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!s_rowsig) s_rowsig = heap_caps_calloc(MAX_ROWS, sizeof(wd_seen_t),
+                                            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
 
     const char *title = (s_kind == WD_KIND_BLE) ? "BLE Devices" : "WiFi APs";
 
@@ -207,9 +218,17 @@ static void wardrive_list_destroy(void) {
     if (s_list_root && lv_obj_is_valid(s_list_root)) lv_obj_del(s_list_root);
     s_list_root = s_list_cont = s_back_btn = s_hdr = s_empty_lbl = NULL;
     memset(s_rows, 0, sizeof(s_rows));
+    if (s_rowsig) { heap_caps_free(s_rowsig); s_rowsig = NULL; }
+    s_nrows = 0;
     wardrive_list_view.root = NULL;
     s_touch_started = false;
 }
+
+// Finger slop before a touch counts as a drag rather than a tap. 8px was too
+// tight -- a deliberate scroll registered as a tap on whichever tile the finger
+// landed on. Also applied at release (see below), because some touch controllers
+// deliver few or no intermediate move events during a slow drag.
+#define TOUCH_DRAG_SLOP 16
 
 static bool point_in(lv_obj_t *obj, int x, int y) {
     if (!obj || !lv_obj_is_valid(obj)) return false;
@@ -228,11 +247,16 @@ static void wardrive_list_input(InputEvent *event) {
             } else {
                 int dy = d->point.y - s_ly;
                 s_lx = d->point.x; s_ly = d->point.y;
-                if (abs(d->point.y - s_sy) > 8 || abs(d->point.x - s_sx) > 8) s_touch_dragged = true;
+                if (abs(d->point.y - s_sy) > TOUCH_DRAG_SLOP || abs(d->point.x - s_sx) > TOUCH_DRAG_SLOP) s_touch_dragged = true;
                 if (s_touch_dragged && s_list_cont && dy) display_manager_queue_scroll(s_list_cont, dy);
             }
         } else if (d->state == LV_INDEV_STATE_REL && s_touch_started) {
             s_touch_started = false;
+            // Re-check against where the finger first landed: a slow drag can
+            // arrive as press+release with no move events in between, which
+            // would otherwise be mistaken for a tap.
+            if (abs(d->point.y - s_sy) > TOUCH_DRAG_SLOP ||
+                abs(d->point.x - s_sx) > TOUCH_DRAG_SLOP) s_touch_dragged = true;
             if (s_touch_dragged) return;
             int x = d->point.x, y = d->point.y;
             if (point_in(s_back_btn, x, y)) { display_manager_switch_view(&wardrive_dashboard_view); return; }

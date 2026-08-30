@@ -251,6 +251,12 @@ static void go_to_menu(void) {
     display_manager_switch_view(&main_menu_view);
 }
 
+// Finger slop before a touch counts as a drag rather than a tap. 8px was too
+// tight -- a deliberate scroll registered as a tap on whichever tile the finger
+// landed on. Also applied at release (see below), because some touch controllers
+// deliver few or no intermediate move events during a slow drag.
+#define TOUCH_DRAG_SLOP 16
+
 static bool point_in(lv_obj_t *obj, int x, int y) {
     if (!obj || !lv_obj_is_valid(obj)) return false;
     lv_area_t a; lv_obj_get_coords(obj, &a);
@@ -273,13 +279,18 @@ static void wardrive_dashboard_input(InputEvent *event) {
             } else {
                 int dy = d->point.y - s_ly;
                 s_lx = d->point.x; s_ly = d->point.y;
-                if (abs(d->point.y - s_sy) > 8 || abs(d->point.x - s_sx) > 8)
+                if (abs(d->point.y - s_sy) > TOUCH_DRAG_SLOP || abs(d->point.x - s_sx) > TOUCH_DRAG_SLOP)
                     s_touch_dragged = true;
                 if (s_touch_dragged && s_content && dy)
                     display_manager_queue_scroll(s_content, dy);
             }
         } else if (d->state == LV_INDEV_STATE_REL && s_touch_started) {
             s_touch_started = false;
+            // Re-check against where the finger first landed: a slow drag can
+            // arrive as press+release with no move events in between, which
+            // would otherwise be mistaken for a tap.
+            if (abs(d->point.y - s_sy) > TOUCH_DRAG_SLOP ||
+                abs(d->point.x - s_sx) > TOUCH_DRAG_SLOP) s_touch_dragged = true;
             if (s_touch_dragged) return;
             int x = d->point.x, y = d->point.y;
             if (point_in(s_back_btn, x, y)) { go_to_menu(); return; }

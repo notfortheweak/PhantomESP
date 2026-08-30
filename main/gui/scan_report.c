@@ -5,6 +5,10 @@
 // the scheduler's scans.
 #include "gui/scan_report.h"
 
+#include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 #include "sdkconfig.h"
 #include <stdio.h>
 #include <string.h>
@@ -111,34 +115,37 @@ static bool drones_get(int i, scan_sig_t *o) {
     return true;
 }
 
-// ---- Flock ----
-static int flock_count(void) { return flock_detector_get_count(); }
-static bool flock_get(int i, scan_sig_t *o) {
-    const FlockDetection *d = flock_detector_get_detection(i);
-    if (!d) return false;
-    snprintf(o->title, sizeof(o->title), "%s", d->mac);
-    snprintf(o->addr, sizeof(o->addr), "%s", d->mac);
-    snprintf(o->sub, sizeof(o->sub), "%s", d->method);
-    o->rssi = d->rssi; o->has_rssi = true; o->kind = SKIND_DEFAULT;
-    return true;
+// ---- Surveillance cameras ----
+// One category covering both sources: vendor-OUI matches (camera_detect) and the
+// Flock Safety ALPR detector's own hits. Flock keeps its dedicated engine (probe
+// heuristics + its own OUI list) but reports here so there is a single place to
+// look for "who is watching", with tier driving how loudly it shouts.
+static int cameras_count(void) {
+    return camera_detect_get_count() + flock_detector_get_count();
 }
-
-// ---- Surveillance cameras (vendor-OUI matched; no dedicated radio phase) ----
-static int cameras_count(void) { return camera_detect_get_count(); }
 static bool cameras_get(int i, scan_sig_t *o) {
-    const camera_detection_t *d = camera_detect_get(i);
-    if (!d) return false;
-    snprintf(o->title, sizeof(o->title), "%s", d->vendor ? d->vendor : "Camera");
-    snprintf(o->addr, sizeof(o->addr), "%02x:%02x:%02x:%02x:%02x:%02x",
-             d->mac[0], d->mac[1], d->mac[2], d->mac[3], d->mac[4], d->mac[5]);
-    // Tier drives both the label and the row color: targeted platforms (ALPR /
-    // bodycam / cloud surveillance) matter far more than an ordinary shop camera.
-    if (d->tier == SURV_TIER_TARGETED)
-        snprintf(o->sub, sizeof(o->sub), "SURVEILLANCE  ch%d", d->channel);
-    else
-        snprintf(o->sub, sizeof(o->sub), "IP camera  ch%d", d->channel);
-    o->rssi = d->rssi; o->has_rssi = (d->rssi != 0);
-    o->kind = (d->tier == SURV_TIER_TARGETED) ? SKIND_STATION : SKIND_AP;
+    int ncam = camera_detect_get_count();
+    if (i < ncam) {
+        const camera_detection_t *d = camera_detect_get(i);
+        if (!d) return false;
+        snprintf(o->title, sizeof(o->title), "%s", d->vendor ? d->vendor : "Camera");
+        snprintf(o->addr, sizeof(o->addr), "%02x:%02x:%02x:%02x:%02x:%02x",
+                 d->mac[0], d->mac[1], d->mac[2], d->mac[3], d->mac[4], d->mac[5]);
+        if (d->tier == SURV_TIER_TARGETED)
+            snprintf(o->sub, sizeof(o->sub), "SURVEILLANCE  ch%d", d->channel);
+        else
+            snprintf(o->sub, sizeof(o->sub), "IP camera  ch%d", d->channel);
+        o->rssi = d->rssi; o->has_rssi = (d->rssi != 0);
+        o->kind = (d->tier == SURV_TIER_TARGETED) ? SKIND_STATION : SKIND_AP;
+        return true;
+    }
+    // Flock ALPR hits: always the loud tier (red), labelled with how they matched.
+    const FlockDetection *f = flock_detector_get_detection(i - ncam);
+    if (!f) return false;
+    snprintf(o->title, sizeof(o->title), "Flock ALPR");
+    snprintf(o->addr, sizeof(o->addr), "%s", f->mac);
+    snprintf(o->sub, sizeof(o->sub), "SURVEILLANCE  %s", f->method);
+    o->rssi = f->rssi; o->has_rssi = true; o->kind = SKIND_STATION;
     return true;
 }
 
@@ -213,7 +220,6 @@ static bool ble_get(int idx, scan_sig_t *o) {
 static const scan_category_t s_categories[SCAT_COUNT] = {
     [SCAT_WIFI]     = { "WiFi",     wifi_count,   wifi_get },
     [SCAT_DRONES]   = { "Drones",   drones_count, drones_get },
-    [SCAT_FLOCK]    = { "Flock Cam",flock_count,  flock_get },
     [SCAT_CAMERAS]  = { "Cameras",  cameras_count,cameras_get },
     [SCAT_PINEAP]   = { "PineAP",   pineap_count, pineap_get },
 #ifndef CONFIG_IDF_TARGET_ESP32S2
@@ -250,13 +256,50 @@ typedef struct {
     bool        active;
 } seen_t;
 
-static seen_t s_seen[SCAT_COUNT][SEEN_MAX];
-static int    s_seen_n[SCAT_COUNT];
+// The table is [SCAT_COUNT][SEEN_MAX] flattened, allocated only while Live Scan
+// is open. Held statically it was 14,288 bytes of permanent .bss -- the single
+// largest consumer in the firmware -- on boards where the LVGL pool and the BLE
+// stack are fighting over the same internal heap. PSRAM-preferred with an
+// internal fallback, matching wardrive_report.
+//
+// The scheduler task writes this while the LVGL task reads it, and the buffer is
+// freed on exit from Live Scan while the scheduler may still be finishing a
+// phase, so every access is behind a mutex. Uncontended takes are cheap; the
+// alternative (a bare pointer) has a real use-after-free window on exit.
+static seen_t          *s_seen = NULL;
+static int              s_seen_n[SCAT_COUNT];
+static SemaphoreHandle_t s_seen_lock = NULL;
+
+#define SEEN_AT(id, j) (s_seen[(id) * SEEN_MAX + (j)])
+#define SEEN_LOCK()    (s_seen_lock && xSemaphoreTake(s_seen_lock, pdMS_TO_TICKS(50)) == pdTRUE)
+#define SEEN_UNLOCK()  xSemaphoreGive(s_seen_lock)
+
+void scan_report_alloc(void) {
+    if (!s_seen_lock) s_seen_lock = xSemaphoreCreateMutex();
+    if (!s_seen_lock || s_seen) return;
+    size_t bytes = (size_t)SCAT_COUNT * SEEN_MAX * sizeof(seen_t);
+    s_seen = heap_caps_calloc(1, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_seen) s_seen = heap_caps_calloc(1, bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    memset(s_seen_n, 0, sizeof(s_seen_n));
+    s_ap_id_n = 0;
+}
+
+void scan_report_free(void) {
+    if (!s_seen_lock) return;
+    if (!SEEN_LOCK()) return;          // busy: leave it rather than free under a writer
+    seen_t *tmp = s_seen;
+    s_seen = NULL;                     // publish NULL before releasing
+    memset(s_seen_n, 0, sizeof(s_seen_n));
+    SEEN_UNLOCK();
+    if (tmp) heap_caps_free(tmp);
+}
 
 void scan_report_reset_session(void) {
-    memset(s_seen, 0, sizeof(s_seen));
+    if (!SEEN_LOCK()) return;
+    if (s_seen) memset(s_seen, 0, (size_t)SCAT_COUNT * SEEN_MAX * sizeof(seen_t));
     memset(s_seen_n, 0, sizeof(s_seen_n));
     s_ap_id_n = 0;   // restart AP numbering
+    SEEN_UNLOCK();
 }
 
 // Two observations are the same device when their kind-appropriate UNIQUE key
@@ -282,8 +325,11 @@ static bool same_signal(const seen_t *e, const scan_sig_t *sig) {
 void scan_report_accumulate(scan_category_id_t id) {
     const scan_category_t *cat = scan_report_category(id);
     if (!cat || !cat->count || !cat->get) return;
+    if (id < 0 || id >= SCAT_COUNT) return;
+    if (!SEEN_LOCK()) return;
+    if (!s_seen) { SEEN_UNLOCK(); return; }
 
-    for (int j = 0; j < s_seen_n[id]; j++) s_seen[id][j].active = false;
+    for (int j = 0; j < s_seen_n[id]; j++) SEEN_AT(id, j).active = false;
 
     int n = cat->count();
     for (int i = 0; i < n; i++) {
@@ -292,46 +338,59 @@ void scan_report_accumulate(scan_category_id_t id) {
         if (!cat->get(i, &sig)) continue;
         int f = -1;
         for (int j = 0; j < s_seen_n[id]; j++) {
-            if (same_signal(&s_seen[id][j], &sig)) { f = j; break; }
+            if (same_signal(&SEEN_AT(id, j), &sig)) { f = j; break; }
         }
         if (f < 0) {
             if (s_seen_n[id] >= SEEN_MAX) continue;
             f = s_seen_n[id]++;
         }
-        seen_t *e = &s_seen[id][f];
+        seen_t *e = &SEEN_AT(id, f);
         snprintf(e->title, sizeof(e->title), "%s", sig.title);
         snprintf(e->addr, sizeof(e->addr), "%s", sig.addr);
         snprintf(e->sub, sizeof(e->sub), "%s", sig.sub);
         e->rssi = sig.rssi; e->has_rssi = sig.has_rssi; e->kind = sig.kind;
         e->active = true;
     }
+    SEEN_UNLOCK();
 }
 
 int scan_report_total_count(scan_category_id_t id) {
     if (id < 0 || id >= SCAT_COUNT) return 0;
-    return s_seen_n[id];
+    if (!SEEN_LOCK()) return 0;
+    int n = s_seen ? s_seen_n[id] : 0;
+    SEEN_UNLOCK();
+    return n;
 }
 int scan_report_active_count(scan_category_id_t id) {
     if (id < 0 || id >= SCAT_COUNT) return 0;
+    if (!SEEN_LOCK()) return 0;
     int c = 0;
-    for (int j = 0; j < s_seen_n[id]; j++) if (s_seen[id][j].active) c++;
+    if (s_seen)
+        for (int j = 0; j < s_seen_n[id]; j++) if (SEEN_AT(id, j).active) c++;
+    SEEN_UNLOCK();
     return c;
 }
 int scan_report_kind_active(scan_category_id_t id, scan_kind_t kind) {
     if (id < 0 || id >= SCAT_COUNT) return 0;
+    if (!SEEN_LOCK()) return 0;
     int c = 0;
-    for (int j = 0; j < s_seen_n[id]; j++)
-        if (s_seen[id][j].active && s_seen[id][j].kind == kind) c++;
+    if (s_seen)
+        for (int j = 0; j < s_seen_n[id]; j++)
+            if (SEEN_AT(id, j).active && SEEN_AT(id, j).kind == kind) c++;
+    SEEN_UNLOCK();
     return c;
 }
 
 bool scan_report_seen_get(scan_category_id_t id, int index, scan_sig_t *out, bool *active) {
     if (id < 0 || id >= SCAT_COUNT || !out) return false;
+    if (!SEEN_LOCK()) return false;
+    if (!s_seen) { SEEN_UNLOCK(); return false; }
     int total = s_seen_n[id], c = 0;
-    for (int pass = 0; pass < 2; pass++) {          // active rows first
+    bool found = false;
+    for (int pass = 0; pass < 2 && !found; pass++) {   // active rows first
         bool want_active = (pass == 0);
         for (int j = 0; j < total; j++) {
-            seen_t *e = &s_seen[id][j];
+            seen_t *e = &SEEN_AT(id, j);
             if (e->active != want_active) continue;
             if (c++ != index) continue;
             snprintf(out->title, sizeof(out->title), "%s", e->title);
@@ -339,8 +398,10 @@ bool scan_report_seen_get(scan_category_id_t id, int index, scan_sig_t *out, boo
             snprintf(out->sub, sizeof(out->sub), "%s", e->sub);
             out->rssi = e->rssi; out->has_rssi = e->has_rssi; out->kind = e->kind;
             if (active) *active = e->active;
-            return true;
+            found = true;
+            break;
         }
     }
-    return false;
+    SEEN_UNLOCK();
+    return found;
 }

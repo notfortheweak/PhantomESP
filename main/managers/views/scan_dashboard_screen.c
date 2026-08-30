@@ -63,7 +63,6 @@ static scan_severity_t sev_for(scan_category_id_t cat, int count) {
     if (count <= 0) return SCAN_SEV_IDLE;
     switch (cat) {
     case SCAT_DRONES:
-    case SCAT_FLOCK:
     case SCAT_PINEAP:
     case SCAT_FLIPPERS:
         return SCAN_SEV_THREAT;
@@ -71,8 +70,10 @@ static scan_severity_t sev_for(scan_category_id_t cat, int count) {
         // Ordinary IP cameras are everywhere, so they stay amber; only targeted
         // surveillance platforms (ALPR / bodycam / cloud) escalate to red, which
         // keeps a Flock or Axon hit from being lost among shop cameras.
-        return camera_detect_get_targeted_count() > 0 ? SCAN_SEV_THREAT
-                                                      : SCAN_SEV_PRESENT;
+        // A Flock ALPR hit is always the loud kind, so it counts too.
+        return (camera_detect_get_targeted_count() > 0 ||
+                flock_detector_get_count() > 0) ? SCAN_SEV_THREAT
+                                                : SCAN_SEV_PRESENT;
     default:                    // WiFi, AirTags, BLE
         return SCAN_SEV_PRESENT;
     }
@@ -121,6 +122,7 @@ static void scan_dashboard_create(void) {
         s_saved_timeout = G_Settings.display_timeout_ms;
         G_Settings.display_timeout_ms = UINT32_MAX;   // UINT32_MAX == "Never"
         s_screen_forced = true;
+        scan_report_alloc();           // heap-backed only while Live Scan is open
         scan_report_reset_session();   // fresh session totals per Live Scan visit
     }
     scan_scheduler_set_focus(-1);   // dashboard shows all categories (round-robin)
@@ -159,8 +161,7 @@ static void scan_dashboard_create(void) {
 
     add_tile(content, "WiFi",      LV_SYMBOL_WIFI,      SCAT_WIFI);
     add_tile(content, "Drones",    LV_SYMBOL_UP,        SCAT_DRONES);
-    add_tile(content, "Cameras",   LV_SYMBOL_VIDEO,     SCAT_CAMERAS);
-    add_tile(content, "Flock Cam", LV_SYMBOL_EYE_OPEN,  SCAT_FLOCK);
+    add_tile(content, "Cameras",   LV_SYMBOL_EYE_OPEN,  SCAT_CAMERAS);
     add_tile(content, "PineAP",    LV_SYMBOL_WARNING,   SCAT_PINEAP);
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     add_tile(content, "Flippers",  LV_SYMBOL_USB,       SCAT_FLIPPERS);
@@ -191,6 +192,9 @@ static void go_to_menu(void) {
         s_screen_forced = false;
     }
     scan_scheduler_stop();
+    // Safe even though the scheduler may still be finishing its current phase:
+    // the accumulator is mutex-guarded and every accessor no-ops once freed.
+    scan_report_free();
     display_manager_switch_view(&main_menu_view);
 }
 
@@ -199,6 +203,12 @@ static void open_category(scan_category_id_t cat) {
     scan_scheduler_set_focus((int)cat);   // fast-scan just this category while viewing
     display_manager_switch_view(&scan_list_view);   // scheduler keeps running
 }
+
+// Finger slop before a touch counts as a drag rather than a tap. 8px was too
+// tight -- a deliberate scroll registered as a tap on whichever tile the finger
+// landed on. Also applied at release (see below), because some touch controllers
+// deliver few or no intermediate move events during a slow drag.
+#define TOUCH_DRAG_SLOP 16
 
 static bool point_in(lv_obj_t *obj, int x, int y) {
     if (!obj || !lv_obj_is_valid(obj)) return false;
@@ -217,13 +227,18 @@ static void scan_dashboard_input(InputEvent *event) {
             } else {
                 int dy = d->point.y - s_ly;
                 s_lx = d->point.x; s_ly = d->point.y;
-                if (abs(d->point.y - s_sy) > 8 || abs(d->point.x - s_sx) > 8)
+                if (abs(d->point.y - s_sy) > TOUCH_DRAG_SLOP || abs(d->point.x - s_sx) > TOUCH_DRAG_SLOP)
                     s_touch_dragged = true;
                 if (s_touch_dragged && s_content && dy)
                     display_manager_queue_scroll(s_content, dy);
             }
         } else if (d->state == LV_INDEV_STATE_REL && s_touch_started) {
             s_touch_started = false;
+            // Re-check against where the finger first landed: a slow drag can
+            // arrive as press+release with no move events in between, which
+            // would otherwise be mistaken for a tap.
+            if (abs(d->point.y - s_sy) > TOUCH_DRAG_SLOP ||
+                abs(d->point.x - s_sx) > TOUCH_DRAG_SLOP) s_touch_dragged = true;
             if (s_touch_dragged) return;
             int x = d->point.x, y = d->point.y;
             if (point_in(s_back_btn, x, y)) { go_to_menu(); return; }

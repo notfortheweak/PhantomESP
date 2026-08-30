@@ -97,12 +97,13 @@ static void run_phase(scan_category_id_t cat) {
         (void)aerial_detector_stop_scan();
         GAP_DELAY();
         break;
-    case SCAT_FLOCK:
+    case SCAT_CAMERAS:
+        // One phase covers all surveillance cameras. The flock detector supplies
+        // the promiscuous sniffer (its ALPR heuristics plus the camera-OUI match
+        // piggybacked on it); the AP/station lists are then folded in, and both
+        // sources publish into the single Cameras category.
         (void)flock_detector_start();
         PHASE_DELAY();
-        scan_report_accumulate(SCAT_FLOCK);
-        // The flock sniffer also feeds camera_detect while it is promiscuous;
-        // fold in the AP/station lists too, then publish. No radio time of its own.
         camera_detect_sweep_wifi_lists();
         scan_report_accumulate(SCAT_CAMERAS);
         (void)flock_detector_stop();
@@ -162,7 +163,7 @@ static void scan_scheduler_task(void *arg) {
             run_phase(SCAT_WIFI);
             run_phase(SCAT_PINEAP);
             run_phase(SCAT_DRONES);
-            run_phase(SCAT_FLOCK);
+            run_phase(SCAT_CAMERAS);
 #ifndef CONFIG_IDF_TARGET_ESP32S2
             run_phase(SCAT_FLIPPERS);
             run_phase(SCAT_AIRTAGS);
