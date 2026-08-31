@@ -16,6 +16,7 @@
 #include "managers/scan_scheduler.h"
 #include "managers/settings_manager.h"
 #include "managers/views/scan_dashboard_screen.h"
+#include "managers/views/aerial_detail_screen.h"
 
 #define MAX_ROWS 20   // matches scan_report SEEN_MAX; caps list rows
 
@@ -266,7 +267,14 @@ static void scan_list_input(InputEvent *event) {
                 if (point_in(s_rows[i], x, y)) {
                     s_selected_sig = s_rowsig[i];
                     s_selected_active = s_rowactive[i];
-                    display_manager_switch_view(&scan_signal_view);
+                    // Drones get a dedicated telemetry screen (aircraft + operator
+                    // location); everything else uses the generic signal detail.
+                    if (s_category == SCAT_DRONES && s_rowsig[i].addr[0]) {
+                        aerial_detail_set_mac(s_rowsig[i].addr);
+                        display_manager_switch_view(&aerial_detail_view);
+                    } else {
+                        display_manager_switch_view(&scan_signal_view);
+                    }
                     return;
                 }
             }

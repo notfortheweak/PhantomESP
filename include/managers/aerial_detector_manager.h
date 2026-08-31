@@ -86,6 +86,9 @@ void aerial_detector_init(void);
 void aerial_detector_deinit(void);
 
 esp_err_t aerial_detector_start_scan(uint32_t duration_ms);
+// Continuous WiFi-only drone hunt for the Drones-tile focus mode: stays in the
+// WiFi phase and hops every hop_interval_ms until aerial_detector_stop_scan().
+esp_err_t aerial_detector_start_scan_wifi(uint32_t hop_interval_ms);
 esp_err_t aerial_detector_stop_scan(void);
 bool aerial_detector_is_scanning(void);
 

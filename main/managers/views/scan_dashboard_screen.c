@@ -81,8 +81,8 @@ static scan_severity_t sev_for(scan_category_id_t cat, int count) {
 
 // Counts come from the session accumulator (fed by the scheduler task), NOT the
 // live engine getters — so the LVGL task never races the scheduler's scans, and
-// tiles show active-now plus a running "N seen" session total. WiFi splits into
-// A:<access points> S:<stations>.
+// tiles show active-now plus a running "N seen" session total. APs and stations
+// are separate tiles/lists (SCAT_WIFI / SCAT_STATIONS).
 static void update_cb(lv_timer_t *timer) {
     (void)timer;
     // Flip each tick so the active tile alternates -> a ~1Hz pulse at 500ms.
@@ -96,13 +96,7 @@ static void update_cb(lv_timer_t *timer) {
         scan_tile_set_scanning(s_tiles[i].tile, (int)cat == scanning_cat, pulse_phase);
         int active = scan_report_active_count(cat);
         int total = scan_report_total_count(cat);
-        if (cat == SCAT_WIFI) {
-            snprintf(primary, sizeof(primary), "A:%d S:%d",
-                     scan_report_kind_active(cat, SKIND_AP),
-                     scan_report_kind_active(cat, SKIND_STATION));
-        } else {
-            snprintf(primary, sizeof(primary), "%d", active);
-        }
+        snprintf(primary, sizeof(primary), "%d", active);
         scan_tile_set(s_tiles[i].tile, primary, total, sev_for(cat, active));
     }
 }
@@ -159,7 +153,8 @@ static void scan_dashboard_create(void) {
     lv_label_set_text(bl, LV_SYMBOL_LEFT "  Menu");
     lv_obj_set_style_text_color(bl, lv_color_hex(text), 0);
 
-    add_tile(content, "WiFi",      LV_SYMBOL_WIFI,      SCAT_WIFI);
+    add_tile(content, "APs",       LV_SYMBOL_WIFI,      SCAT_WIFI);
+    add_tile(content, "Stations",  LV_SYMBOL_CALL,      SCAT_STATIONS);
     add_tile(content, "Drones",    LV_SYMBOL_UP,        SCAT_DRONES);
     add_tile(content, "Cameras",   LV_SYMBOL_EYE_OPEN,  SCAT_CAMERAS);
     add_tile(content, "PineAP",    LV_SYMBOL_WARNING,   SCAT_PINEAP);

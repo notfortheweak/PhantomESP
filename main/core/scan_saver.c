@@ -209,7 +209,9 @@ void scan_file_close(scan_file_t *sf) {
 
     if (saved) {
         printf("Scan file saved\n");
-        toast_show("Scan saved", TOAST_SUCCESS);
+        // The SD icon still blinks red on every save; the user-facing toast now
+        // names the discovered device type instead (see notify_new_devices in
+        // scan_report.c), so we no longer raise a generic "Scan saved" toast.
         display_manager_signal_scan_saved();   // blink the SD icon red
     }
 }

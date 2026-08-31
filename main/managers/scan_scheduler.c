@@ -34,6 +34,10 @@ static const char *TAG = "scan_sched";
 #define SCAN_PHASE_DWELL_MS  2500
 #define SCAN_GAP_MS          300
 
+// Drones-tile focus mode: continuous WiFi-only hunt (see run_drone_focus).
+#define DRONE_FOCUS_HOP_MS     150   // fast hop -> full 14-channel sweep in ~2s
+#define DRONE_FOCUS_REFRESH_MS 700   // accumulator refresh cadence (no teardown)
+
 static volatile bool s_run = false;
 static volatile int  s_focus = -1;   // scan_category_id_t, or -1 for round-robin
 // Which category is scanning right now (-1 between phases). The dashboard reads
@@ -75,10 +79,13 @@ static void run_phase(scan_category_id_t cat) {
         }
         GAP_DELAY();
         if (!s_run) return;
-        // Station scan (APs stay resident, so accumulate captures both).
+        // Station scan (APs stay resident, so accumulate captures both). APs and
+        // stations are now separate categories/stores, so feed both from this one
+        // WiFi phase.
         wifi_manager_start_station_scan();
         PHASE_DELAY();
-        scan_report_accumulate(SCAT_WIFI);
+        scan_report_accumulate(SCAT_WIFI);       // access points
+        scan_report_accumulate(SCAT_STATIONS);   // client stations
         wifi_manager_stop_monitor_mode();
         GAP_DELAY();
         break;
@@ -138,6 +145,27 @@ static void run_phase(scan_category_id_t cat) {
     s_current = -1;
 }
 
+// Continuous WiFi-only drone acquisition for the Drones tile (focus mode).
+// Instead of run_phase(SCAT_DRONES)'s start->2.5s->accumulate->stop->gap cycle
+// -- which wipes the aerial device list and only visits ~8 of 14 channels each
+// pass, so a DJI beacon can take tens of seconds to catch -- start the scan
+// ONCE, hop fast, and refresh the accumulator in place. Acquisition drops to
+// roughly one ~2s sweep. Runs until focus leaves DRONES (or scanning stops).
+static void run_drone_focus(void) {
+    if (aerial_detector_start_scan_wifi(DRONE_FOCUS_HOP_MS) != ESP_OK) {
+        run_phase(SCAT_DRONES);   // already scanning / alloc failed: fall back
+        return;
+    }
+    s_current = (int)SCAT_DRONES;
+    while (s_run && s_focus == (int)SCAT_DRONES) {
+        vTaskDelay(pdMS_TO_TICKS(DRONE_FOCUS_REFRESH_MS));
+        scan_report_accumulate(SCAT_DRONES);   // refresh without tearing down
+    }
+    s_current = -1;
+    (void)aerial_detector_stop_scan();
+    GAP_DELAY();
+}
+
 static void scan_scheduler_task(void *arg) {
     (void)arg;
     ESP_LOGI(TAG, "scan scheduler started");
@@ -153,7 +181,13 @@ static void scan_scheduler_task(void *arg) {
 
     while (s_run) {
         int focus = s_focus;
-        if (focus >= 0 && focus < SCAT_COUNT) {
+        if (focus == (int)SCAT_DRONES) {
+            run_drone_focus();   // continuous WiFi-only fast acquisition
+        } else if (focus == (int)SCAT_STATIONS) {
+            // Stations are captured by the WiFi phase (one scan feeds both the
+            // AP and Station stores), so focusing the Stations list runs that.
+            run_phase(SCAT_WIFI);
+        } else if (focus >= 0 && focus < SCAT_COUNT) {
             run_phase((scan_category_id_t)focus);
         } else {
             // WiFi-first rotation (proven stable). Running a WiFi phase directly

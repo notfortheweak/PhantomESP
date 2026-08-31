@@ -74,13 +74,18 @@ static bool is_airtag_pattern(const uint8_t *payload, size_t len) {
         return false;
     }
     
-    for (size_t i = 0; i <= len - 4; i++) {
-        // Pattern 1: Nearby AirTag (0x1E 0xFF 0x4C 0x00)
-        // Pattern 2: Offline Finding (0x4C 0x00 0x12 0x19)
-        if ((payload[i] == 0x1E && payload[i + 1] == 0xFF && 
-             payload[i + 2] == 0x4C && payload[i + 3] == 0x00) ||
-            (payload[i] == 0x4C && payload[i + 1] == 0x00 && 
-             payload[i + 2] == 0x12 && payload[i + 3] == 0x19)) {
+    for (size_t i = 0; i + 2 < len; i++) {
+        // Apple "Find My" (Offline Finding) beacon: manufacturer-data
+        // company ID 0x004C (bytes 0x4C 0x00) immediately followed by the
+        // Apple message type 0x12 (Find My). AirTags and third-party Find My
+        // trackers broadcast type 0x12; AirPods use 0x07 (proximity pairing)
+        // and iPhones/other Apple gear use 0x0F/0x10 (nearby). The old check
+        // also accepted the bare company ID (0x1E 0xFF 0x4C 0x00) with no type
+        // byte, which matched EVERY Apple device -- that is why open AirPods
+        // were reported as AirTags. Requiring the 0x12 type byte fixes it;
+        // non-Find-My Apple devices now fall through to the general BLE list.
+        if (payload[i] == 0x4C && payload[i + 1] == 0x00 &&
+            payload[i + 2] == 0x12) {
             return true;
         }
     }

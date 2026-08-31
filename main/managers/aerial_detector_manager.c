@@ -21,6 +21,7 @@
 #include "freertos/semphr.h"
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "nimble/nimble_port.h"
@@ -645,7 +646,12 @@ esp_err_t aerial_detector_start_scan(uint32_t duration_ms) {
     }
     
     is_scanning = true;
-    
+
+    // Round-robin always hops at the standard interval, even if a prior Drones-
+    // tile focus session left the fast interval in place (see
+    // aerial_detector_start_scan_wifi).
+    channel_hop_interval_ms = 300;
+
     // calculate phase durations (split time between wifi and ble)
     wifi_scan_duration_ms = duration_ms / 2;
     ble_scan_duration_ms = duration_ms / 2;
@@ -667,8 +673,54 @@ esp_err_t aerial_detector_start_scan(uint32_t duration_ms) {
     // schedule switch to ble phase
     esp_timer_start_once(phase_timer, wifi_scan_duration_ms * 1000);
     
-    ESP_LOGI(TAG, "scan started: wifi %lums then ble %lums", 
+    ESP_LOGI(TAG, "scan started: wifi %lums then ble %lums",
              wifi_scan_duration_ms, ble_scan_duration_ms);
+    return ESP_OK;
+}
+
+// Continuous WiFi-only drone hunt used by the Drones-tile focus mode.
+//
+// The normal round-robin DRONES phase does start_scan -> ~2.5s dwell ->
+// accumulate -> stop_scan every cycle. stop_scan wipes the device buffer and
+// tears down promiscuous mode, and 2.5s at 300ms/hop only visits ~8 of 14
+// channels -- so a DJI DroneID beacon sitting on one channel can be missed for
+// many cycles (the "30s to acquire" problem). This entry point instead:
+//   * stays in the WiFi phase indefinitely (no phase timer -> never switches to
+//     BLE, never auto-stops),
+//   * hops fast (caller passes ~150ms -> a full 14-channel sweep in ~2s),
+//   * leaves the scan running so the caller can refresh the accumulator in place
+//     without wiping the aerial device list between refreshes.
+// The caller ends it with aerial_detector_stop_scan(). DJI DroneID is a WiFi
+// signature, so dropping the BLE half costs no DJI coverage; BLE OpenDroneID
+// remote-ID is still covered by the round-robin.
+esp_err_t aerial_detector_start_scan_wifi(uint32_t hop_interval_ms) {
+    if (is_scanning) {
+        ESP_LOGW(TAG, "scan already running");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!devices) {
+        device_capacity = AERIAL_MAX_DEVICES;
+        devices = (AerialDevice *)calloc(device_capacity, sizeof(AerialDevice));
+        if (!devices) {
+            ESP_LOGE(TAG, "failed to allocate device array");
+            return ESP_ERR_NO_MEM;
+        }
+        device_count = 0;
+    }
+
+    if (hop_interval_ms < 50)   hop_interval_ms = 50;    // esp_timer / driver floor
+    if (hop_interval_ms > 1000) hop_interval_ms = 1000;
+    channel_hop_interval_ms = hop_interval_ms;
+
+    is_scanning = true;
+    wifi_scan_duration_ms = 0;   // no phase timer: WiFi phase runs until stop
+    ble_scan_duration_ms = 0;
+
+    start_wifi_phase();
+
+    ESP_LOGI(TAG, "wifi-only drone focus scan started (hop %lums, %d channels)",
+             channel_hop_interval_ms, allowed_channel_count);
     return ESP_OK;
 }
 
@@ -817,12 +869,29 @@ static void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type) {
                 device->type = AERIAL_TYPE_DJI_WIFI;
                 snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "DJI");
                 detected = true;
+                // flight_reg_info (0x10) telemetry sits after the 4-byte vendor
+                // header (vendor_type/unk1/unk2/subcommand): payload[offset+9..].
+                if (subcommand == DJI_DRONEID_SUBCMD_FLIGHT_REG &&
+                    ie_len >= 7 + 53 && (offset + 9 + 53) <= len) {
+                    const uint8_t *fri = &payload[offset + 9];
+                    int fri_len = (int)ie_len - 7;
+                    decode_dji_message(device, fri, (size_t)fri_len);
+                    if (diag_enabled) {
+                        // Ground truth: the user confirms these against the armed
+                        // drone before we trust the on-screen numbers.
+                        glog("[AERIAL] DroneID v%u %s: aircraft %s %.6f,%.6f  operator %s %.6f,%.6f\n",
+                             fri[0], device->mac,
+                             device->has_location ? "@" : "(none)",
+                             device->latitude, device->longitude,
+                             device->has_operator_location ? "@" : "(none)",
+                             device->operator_latitude, device->operator_longitude);
+                    }
+                }
                 if (diag_enabled) {
                     diag_droneid_hits++;
                     glog("[AERIAL] DroneID IE from %s ch%d %ddBm subcmd 0x%02X\n",
                          device->mac, pkt->rx_ctrl.channel, pkt->rx_ctrl.rssi, subcommand);
                 }
-                (void)subcommand;   // telemetry decode (0x10) is a later step
                 break;
             }
 
@@ -841,7 +910,8 @@ static void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type) {
         ENSURE_DEVICE();
         device->type = AERIAL_TYPE_DJI_WIFI;
         snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "%s", drone_vendor);
-        if (is_dji_oui(src_mac)) decode_dji_message(device, payload, len);
+        // Telemetry is decoded from the DroneID IE above, not from a bare OUI
+        // match (which carries no flight_reg_info payload).
         detected = true;
         if (diag_enabled) {
             diag_dji_oui_hits++;
@@ -1052,33 +1122,75 @@ static void decode_opendroneid_message(AerialDevice *device, const uint8_t *data
     }
 }
 
+// little-endian readers for the DroneID payload
+static int32_t rd_i32le(const uint8_t *p) {
+    return (int32_t)((uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+                     ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
+}
+static int16_t rd_i16le(const uint8_t *p) {
+    return (int16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+}
+static bool latlon_sane(double lat, double lon) {
+    if (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) return false;
+    // Reject the null island: an unset/zeroed field decodes to ~0,0.
+    if (lat > -0.0005 && lat < 0.0005 && lon > -0.0005 && lon < 0.0005) return false;
+    return true;
+}
+
+// Decode the DJI DroneID flight_reg_info payload (subcommand 0x10). `data` points
+// at the start of that payload (byte 0 = version), `len` is its length. Layout is
+// from Kismet's dot11_ie_221_dji_droneid parser; lat/lon are radians*1e7, so the
+// divisor is 174533.0 (= 1e7 / (180/pi)) -- NOT the 1e7 used for ODID degrees.
+// Every field is written through a sanity gate so an unknown/encrypted/truncated
+// payload yields "not broadcast" rather than fabricated coordinates.
 static void decode_dji_message(AerialDevice *device, const uint8_t *data, size_t len) {
-    // dji uses proprietary format, basic detection only
-    // full decode would require reverse engineering
-    
-    if (device->type == AERIAL_TYPE_UNKNOWN) {
-        device->type = AERIAL_TYPE_DJI_WIFI;
+    device->type = AERIAL_TYPE_DJI_WIFI;
+
+    // Need bytes through raw_home_lat (offset 49, +4). Below that we can't decode.
+    if (len < 53) return;
+
+    // Serial number (16 ASCII @5) -> device_id, printable only.
+    char serial[17];
+    int sn = 0;
+    for (int i = 0; i < 16; i++) {
+        uint8_t c = data[5 + i];
+        if (c < 32 || c > 126) break;
+        serial[sn++] = (char)c;
     }
-    
-    // attempt to extract basic info if present
-    // dji often includes model info in early bytes
-    if (len > 20) {
-        // look for printable strings that might be model names
-        for (size_t i = 0; i < len - 10; i++) {
-            if (data[i] >= 'A' && data[i] <= 'Z' && data[i+1] >= 'A' && data[i+1] <= 'z') {
-                char temp[16];
-                int j;
-                for (j = 0; j < 15 && i+j < len; j++) {
-                    if (data[i+j] < 32 || data[i+j] > 126) break;
-                    temp[j] = data[i+j];
-                }
-                if (j > 3) {
-                    temp[j] = '\0';
-                    snprintf(device->description, AERIAL_DESC_MAX_LEN, "DJI %s", temp);
-                    break;
-                }
-            }
+    serial[sn] = '\0';
+    if (sn >= 3) snprintf(device->device_id, sizeof(device->device_id), "%s", serial);
+
+    // Aircraft position: radians*1e7 -> degrees.
+    double lon = rd_i32le(&data[21]) / 174533.0;
+    double lat = rd_i32le(&data[25]) / 174533.0;
+    if (latlon_sane(lat, lon)) {
+        device->latitude = lat;
+        device->longitude = lon;
+        device->altitude = (float)rd_i16le(&data[29]);   // metres
+        device->height_agl = (float)rd_i16le(&data[31]); // metres AGL
+        device->has_location = true;
+
+        // Ground speed from N/E velocity; scaling is uncertain in the spec, so
+        // cap it and drop implausible values rather than show a bogus number.
+        double vn = rd_i16le(&data[33]);
+        double ve = rd_i16le(&data[35]);
+        double spd = sqrt(vn * vn + ve * ve);
+        device->speed_horizontal = (spd >= 0.0 && spd <= 120.0) ? (float)spd : -1.0f;
+
+        // Yaw/heading: raw/100 = degrees.
+        double yaw = rd_i16le(&data[43]) / 100.0;
+        if (yaw >= -360.0 && yaw <= 360.0) {
+            device->direction = (float)(yaw < 0 ? yaw + 360.0 : yaw);
         }
+    }
+
+    // Operator / takeoff (home) point -- the counter-surveillance payoff.
+    double hlon = rd_i32le(&data[45]) / 174533.0;
+    double hlat = rd_i32le(&data[49]) / 174533.0;
+    if (latlon_sane(hlat, hlon)) {
+        device->operator_latitude = hlat;
+        device->operator_longitude = hlon;
+        device->has_operator_location = true;
     }
 }
 

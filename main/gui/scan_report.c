@@ -4,6 +4,7 @@
 // ONLY the accumulator, never the live engines — so the LVGL task never races
 // the scheduler's scans.
 #include "gui/scan_report.h"
+#include "gui/toast.h"                          // discovery toast (#5)
 
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
@@ -70,26 +71,31 @@ static bool resolve_ap_ssid(const uint8_t *bssid, char *out, size_t n) {
     return false;
 }
 
-// ---- WiFi: access points (blue) then stations (red) ----
-static int wifi_count(void) { return (int)ap_scan_get_count() + station_scan_get_count(); }
-static bool wifi_get(int i, scan_sig_t *o) {
-    int nap = (int)ap_scan_get_count();
-    if (i < nap) {
-        uint16_t n = 0; wifi_ap_record_t *aps = NULL;
-        ap_scan_get_results(&n, &aps);
-        if (!aps || i >= (int)n) return false;
-        const wifi_ap_record_t *a = &aps[i];
-        int id = ap_id_for(a->bssid);
-        snprintf(o->title, sizeof(o->title), "%s", a->ssid[0] ? (const char *)a->ssid : "(hidden)");
-        set_mac(o->addr, sizeof(o->addr), a->bssid);
-        if (id >= 0) snprintf(o->sub, sizeof(o->sub), "AP #%d  CH %d", id, a->primary);
-        else         snprintf(o->sub, sizeof(o->sub), "AP  CH %d", a->primary);
-        o->rssi = a->rssi; o->has_rssi = true; o->kind = SKIND_AP;
-        return true;
-    }
-    int s = i - nap;
-    if (s < 0 || s >= station_scan_get_count()) return false;
-    const station_ap_pair_t *st = &station_ap_list[s];
+// ---- WiFi access points (blue) — SCAT_WIFI ----
+// APs and stations are now two independent categories/stores (SCAT_WIFI and
+// SCAT_STATIONS) so a crowd of stations can never starve the AP list (and vice
+// versa) under the per-category SEEN_MAX budget — the root of the old
+// "AP vanished / device disappeared" bugs when both shared one 20-slot list.
+static int wifi_ap_count(void) { return (int)ap_scan_get_count(); }
+static bool wifi_ap_get(int i, scan_sig_t *o) {
+    uint16_t n = 0; wifi_ap_record_t *aps = NULL;
+    ap_scan_get_results(&n, &aps);
+    if (!aps || i < 0 || i >= (int)n) return false;
+    const wifi_ap_record_t *a = &aps[i];
+    int id = ap_id_for(a->bssid);
+    snprintf(o->title, sizeof(o->title), "%s", a->ssid[0] ? (const char *)a->ssid : "(hidden)");
+    set_mac(o->addr, sizeof(o->addr), a->bssid);
+    if (id >= 0) snprintf(o->sub, sizeof(o->sub), "AP #%d  CH %d", id, a->primary);
+    else         snprintf(o->sub, sizeof(o->sub), "AP  CH %d", a->primary);
+    o->rssi = a->rssi; o->has_rssi = true; o->kind = SKIND_AP;
+    return true;
+}
+
+// ---- WiFi client stations (red) — SCAT_STATIONS ----
+static int wifi_sta_count(void) { return station_scan_get_count(); }
+static bool wifi_sta_get(int i, scan_sig_t *o) {
+    if (i < 0 || i >= station_scan_get_count()) return false;
+    const station_ap_pair_t *st = &station_ap_list[i];
     char ap_ssid[33];
     bool have = resolve_ap_ssid(st->ap_bssid, ap_ssid, sizeof(ap_ssid));
     int ap_id = ap_id_lookup(st->ap_bssid);   // AP already numbered this session?
@@ -218,7 +224,8 @@ static bool ble_get(int idx, scan_sig_t *o) {
 #endif // !S2
 
 static const scan_category_t s_categories[SCAT_COUNT] = {
-    [SCAT_WIFI]     = { "WiFi",     wifi_count,   wifi_get },
+    [SCAT_WIFI]     = { "Access Points", wifi_ap_count,  wifi_ap_get },
+    [SCAT_STATIONS] = { "Stations",      wifi_sta_count, wifi_sta_get },
     [SCAT_DRONES]   = { "Drones",   drones_count, drones_get },
     [SCAT_CAMERAS]  = { "Cameras",  cameras_count,cameras_get },
     [SCAT_PINEAP]   = { "PineAP",   pineap_count, pineap_get },
@@ -322,6 +329,38 @@ static bool same_signal(const seen_t *e, const scan_sig_t *sig) {
     }
 }
 
+// #5: when a genuinely new device is discovered, toast WHAT it is (the type)
+// instead of the old generic "Scan saved". Singular label carries an identifier
+// (SSID / device id / MAC); a burst in one pass collapses to "N new <plural>".
+// Called AFTER the accumulator lock is released (toast_post mallocs + defers to
+// the LVGL task, so it must not run under SEEN_LOCK).
+static void notify_new_devices(scan_category_id_t id, int new_count, const char *last_title) {
+    if (new_count <= 0) return;
+    const char *one = "device", *many = "devices";
+    switch (id) {
+    case SCAT_WIFI:     one = "AP";         many = "APs";         break;
+    case SCAT_STATIONS: one = "station";    many = "stations";    break;
+    case SCAT_DRONES:   one = "drone";      many = "drones";      break;
+    case SCAT_CAMERAS:  one = "camera";     many = "cameras";     break;
+    case SCAT_PINEAP:   one = "rogue AP";   many = "rogue APs";   break;
+    case SCAT_FLIPPERS: one = "Flipper";    many = "Flippers";    break;
+    case SCAT_AIRTAGS:  one = "AirTag";     many = "AirTags";     break;
+    case SCAT_BLE:      one = "BLE device"; many = "BLE devices"; break;
+    default: break;
+    }
+    // Threat categories get the amber toast; presence categories the info toast.
+    uint8_t type = (id == SCAT_DRONES || id == SCAT_CAMERAS || id == SCAT_PINEAP ||
+                    id == SCAT_FLIPPERS || id == SCAT_AIRTAGS) ? TOAST_WARN : TOAST_INFO;
+    char msg[TOAST_MAX_TEXT_LEN + 1];
+    if (new_count > 1)
+        snprintf(msg, sizeof(msg), "%d new %s", new_count, many);
+    else if (last_title && last_title[0])
+        snprintf(msg, sizeof(msg), "%s: %.40s", one, last_title);
+    else
+        snprintf(msg, sizeof(msg), "New %s", one);
+    toast_show(msg, type);
+}
+
 void scan_report_accumulate(scan_category_id_t id) {
     const scan_category_t *cat = scan_report_category(id);
     if (!cat || !cat->count || !cat->get) return;
@@ -330,6 +369,9 @@ void scan_report_accumulate(scan_category_id_t id) {
     if (!s_seen) { SEEN_UNLOCK(); return; }
 
     for (int j = 0; j < s_seen_n[id]; j++) SEEN_AT(id, j).active = false;
+
+    int new_count = 0;
+    char last_new_title[sizeof(((seen_t *)0)->title)] = {0};
 
     int n = cat->count();
     for (int i = 0; i < n; i++) {
@@ -340,9 +382,25 @@ void scan_report_accumulate(scan_category_id_t id) {
         for (int j = 0; j < s_seen_n[id]; j++) {
             if (same_signal(&SEEN_AT(id, j), &sig)) { f = j; break; }
         }
-        if (f < 0) {
-            if (s_seen_n[id] >= SEEN_MAX) continue;
-            f = s_seen_n[id]++;
+        bool is_new = (f < 0);
+        if (is_new) {
+            if (s_seen_n[id] < SEEN_MAX) {
+                f = s_seen_n[id]++;
+            } else {
+                // Store full: evict the oldest INACTIVE (stale) slot so a real
+                // new device is never dropped in favor of gear that has left.
+                // Entries are roughly insertion-ordered, so the first inactive
+                // found is approximately the oldest. If every slot is active we
+                // are genuinely at capacity — keep what we have, skip the new one.
+                int victim = -1;
+                for (int j = 0; j < s_seen_n[id]; j++) {
+                    if (!SEEN_AT(id, j).active) { victim = j; break; }
+                }
+                if (victim < 0) continue;
+                f = victim;
+            }
+            new_count++;
+            snprintf(last_new_title, sizeof(last_new_title), "%s", sig.title);
         }
         seen_t *e = &SEEN_AT(id, f);
         snprintf(e->title, sizeof(e->title), "%s", sig.title);
@@ -352,6 +410,8 @@ void scan_report_accumulate(scan_category_id_t id) {
         e->active = true;
     }
     SEEN_UNLOCK();
+
+    notify_new_devices(id, new_count, last_new_title);
 }
 
 int scan_report_total_count(scan_category_id_t id) {

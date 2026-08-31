@@ -12,7 +12,8 @@
 #include <stdint.h>
 
 typedef enum {
-    SCAT_WIFI = 0,   // access points + associated stations
+    SCAT_WIFI = 0,   // access points (stations split into SCAT_STATIONS)
+    SCAT_STATIONS,   // client/associated stations, their own list + store
     SCAT_DRONES,
     SCAT_CAMERAS,    // all surveillance cameras: vendor-OUI matches plus
                      // Flock Safety ALPR hits from the flock detector

@@ -1252,7 +1252,7 @@ static const char * const wifi_connection_options[] = {"Connect to WiFi", "Conne
 
 
 static const char * const detect_main_options[] = {
-    "Sweep", "Flock Detection", "PineAP Detection", "Aerial Detector",
+    "Sweep", "Flock Detection", "PineAP Detection",
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     "Find Flippers", "Find AirTags",
     "Advertiser Scan", "OUI Device Scan", "GATT Scan",
@@ -1702,10 +1702,6 @@ static const char * const bluetooth_oui_options[] = {
 static const char * const bluetooth_gatt_options[] = {
     "Start GATT Scan", "List GATT Devices", "Select GATT Device", "Enumerate Services", "Track Device", NULL
 };
-static const char * const bluetooth_aerial_options[] = {
-    "Scan Aerial Devices", "List Aerial Devices", "Track Aerial Device", "Stop Aerial Scan", NULL
-};
-
 typedef enum {
     BLUETOOTH_MENU_MAIN,
     BLUETOOTH_MENU_ADV_LIST,
@@ -1715,8 +1711,7 @@ typedef enum {
     BLUETOOTH_MENU_OUI,
     BLUETOOTH_MENU_OUI_VENDOR_LIST,
     BLUETOOTH_MENU_SPAM,
-    BLUETOOTH_MENU_GATT,
-    BLUETOOTH_MENU_AERIAL
+    BLUETOOTH_MENU_GATT
 } BluetoothMenuState;
 
 static BluetoothMenuState current_bluetooth_menu_state = BLUETOOTH_MENU_MAIN;
@@ -2779,7 +2774,6 @@ void options_menu_create() {
             case BLUETOOTH_MENU_OUI_VENDOR_LIST: options = ble_oui_vendor_list_get_options(); break;
             case BLUETOOTH_MENU_SPAM: options = NULL; break;
             case BLUETOOTH_MENU_GATT: options = bluetooth_gatt_options; break;
-            case BLUETOOTH_MENU_AERIAL: options = bluetooth_aerial_options; break;
         }
         break;
     case OT_GPS: options = gps_options; break;
@@ -5990,14 +5984,6 @@ void option_event_cb(lv_event_t *e) {
 #endif
     }
 
-    else if (strcmp(Selected_Option, "Aerial Detector") == 0) {
-        SelectedMenuType = OT_Bluetooth;
-        current_bluetooth_menu_state = BLUETOOTH_MENU_AERIAL;
-        rebuild_current_menu();
-        option_invoked = false;
-        return;
-    }
-
     else if (strcmp(Selected_Option, "Advertiser Scan") == 0) {
 #ifndef CONFIG_IDF_TARGET_ESP32S2
         SelectedMenuType = OT_Bluetooth;
@@ -6098,34 +6084,6 @@ void option_event_cb(lv_event_t *e) {
 #else
         error_popup_create("Device Does not Support Bluetooth...");
 #endif
-    }
-
-    else if (strcmp(Selected_Option, "Scan Aerial Devices") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("aerialscan 60");
-        view_switched = true;
-    }
-
-    else if (strcmp(Selected_Option, "List Aerial Devices") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("aeriallist");
-        view_switched = true;
-    }
-
-    else if (strcmp(Selected_Option, "Track Aerial Device") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("aerialtrack");
-        view_switched = true;
-    }
-
-    else if (strcmp(Selected_Option, "Stop Aerial Scan") == 0) {
-        terminal_set_return_view(&options_menu_view);
-        display_manager_switch_view(&terminal_view);
-        simulateCommand("aerialstop");
-        view_switched = true;
     }
 
     else if (strcmp(Selected_Option, "GPS Info") == 0) {
@@ -9051,7 +9009,6 @@ static void rebuild_current_menu(void) {
                     break;
                 case BLUETOOTH_MENU_SPAM: options = NULL; break;
                 case BLUETOOTH_MENU_GATT: options = bluetooth_gatt_options; break;
-                case BLUETOOTH_MENU_AERIAL: options = bluetooth_aerial_options; break;
             }
             break;
         case OT_GPS: options = gps_options; break;
