@@ -121,6 +121,8 @@ static const char *drone_ssid_patterns[] = {
     "SKYDIO",          // skydio
     "Skydio",          // skydio
     "AR.Drone",        // parrot
+    "Aerodome",        // flock safety drone-as-first-responder program
+    "Anzu",            // anzu robotics (flock's DFR hardware partner)
     "FPV-",            // generic fpv
     "DroneLink",       // generic
     NULL
@@ -175,6 +177,16 @@ static uint8_t diag_seen_oui_count = 0;
 static uint32_t diag_frames = 0, diag_mgmt = 0, diag_dji_oui_hits = 0, diag_droneid_hits = 0;
 static uint32_t diag_last_log_ms = 0;
 
+// Raw DroneID vendor-IE capture: one full hex dump per distinct subcommand
+// value seen (0x10 flight_reg_info, 0x11 flight_purpose, and anything else --
+// undocumented ones included, since this is meant to build real ground truth
+// rather than only confirm what the decoder already expects). This is what
+// makes the decoder's field offsets (currently just "per Kismet's parser",
+// unverified against any of our own hardware) checkable against a real DJI
+// airframe, and the OUI match it hangs off is model-agnostic -- it captures
+// from whatever DJI drone is flying, not one specific model.
+static bool diag_seen_subcmd[256];
+
 // callback
 static AerialDetectorCallback user_callback = NULL;
 static void *user_callback_data = NULL;
@@ -191,6 +203,9 @@ static void phase_switch_callback(void *arg);
 static void channel_hop_callback(void *arg);
 static void build_allowed_channels_list(void);
 static AerialDevice* find_or_create_device(const uint8_t *mac);
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+static void diag_dump_dji_ble(const char *mac, const uint8_t *adv, int adv_len);
+#endif
 static void decode_opendroneid_message(AerialDevice *device, const uint8_t *data, size_t len);
 static void decode_dji_message(AerialDevice *device, const uint8_t *data, size_t len);
 static void check_drone_network(AerialDevice *device, const char *ssid);
@@ -506,6 +521,7 @@ static void aerial_ble_data_handler(struct ble_gap_event *event, size_t len) {
                 snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "DJI");
                 decode_dji_message(device, adv_data, adv_len);
                 detected = true;
+                if (diag_enabled) diag_dump_dji_ble(device->mac, adv_data, (int)adv_len);
                 glog("DJI Device,\n");
                 glog("     MAC: %s,\n", device->mac);
                 glog("     RSSI: %d dBm,\n", rssi);
@@ -779,6 +795,51 @@ static void diag_note_oui(const uint8_t *mac, int channel, int rssi) {
          channel, rssi, is_dji_oui(mac) ? "  <-- DJI" : "");
 }
 
+// Renders up to 100 bytes of `buf` as "XX XX XX ..." into `out` (caller-sized,
+// used at 3*100+1 below). Shared by every raw-capture dump so ground truth for
+// a new DJI model/firmware always comes out in the same copy-pasteable form.
+static void diag_hex(const uint8_t *buf, int len, char *out, size_t outsz) {
+    int hexlen = 0;
+    if (len > 100) len = 100;
+    for (int b = 0; b < len && hexlen + 3 < (int)outsz; b++) {
+        hexlen += snprintf(out + hexlen, outsz - hexlen, "%02X ", buf[b]);
+    }
+}
+
+// One full hex dump per distinct DJI DroneID subcommand value, the first time
+// each is seen while diagnostics are on. `ie` points at the IE's type byte
+// (0xDD), `ie_total_len` is type+len+payload bytes to print (already bounds-
+// clamped by the caller against the frame buffer).
+static void diag_dump_dji_ie(uint8_t subcommand, const char *mac, const uint8_t *ie,
+                              int ie_total_len) {
+    if (diag_seen_subcmd[subcommand]) return;
+    diag_seen_subcmd[subcommand] = true;
+    // static, not stack-local: this runs inside the promiscuous WiFi RX
+    // callback's call chain, a context that's bitten this codebase before on
+    // tight stack margins -- no reason to add ~300 bytes of frame there when
+    // this is diagnostic-only, off by default, and already single-shot.
+    static char hex[3 * 100 + 1];
+    diag_hex(ie, ie_total_len, hex, sizeof(hex));
+    glog("[AERIAL] RAW WiFi IE subcmd 0x%02X (%d bytes) from %s: %s\n",
+         subcommand, ie_total_len, mac, hex);
+}
+
+// Same idea for the BLE DJI service (0xFFE0) path, which carries the whole
+// advertisement rather than a subcommand-framed 802.11 IE -- one dump total
+// (BLE ads don't carry a subcommand byte to key on) per diag session. No BLE
+// hardware on ESP32-S2, so guard it like every other BLE-only symbol here to
+// avoid an unused-function warning on that target.
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+static bool diag_seen_dji_ble = false;
+static void diag_dump_dji_ble(const char *mac, const uint8_t *adv, int adv_len) {
+    if (diag_seen_dji_ble) return;
+    diag_seen_dji_ble = true;
+    static char hex[3 * 100 + 1];   // see diag_dump_dji_ie: static to spare the stack
+    diag_hex(adv, adv_len, hex, sizeof(hex));
+    glog("[AERIAL] RAW BLE adv (%d bytes) from %s: %s\n", adv_len, mac, hex);
+}
+#endif
+
 static void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type) {
     if (!enable_opendroneid && !enable_dji && !enable_networks) {
         return;
@@ -869,6 +930,12 @@ static void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type) {
                 device->type = AERIAL_TYPE_DJI_WIFI;
                 snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "DJI");
                 detected = true;
+                if (diag_enabled) {
+                    int ie_total = (int)ie_len + 2;             // type + len + payload
+                    int avail = len - offset;                    // bytes actually in this frame
+                    if (ie_total > avail) ie_total = avail;
+                    diag_dump_dji_ie(subcommand, device->mac, &payload[offset], ie_total);
+                }
                 // flight_reg_info (0x10) telemetry sits after the 4-byte vendor
                 // header (vendor_type/unk1/unk2/subcommand): payload[offset+9..].
                 if (subcommand == DJI_DRONEID_SUBCMD_FLIGHT_REG &&
@@ -1176,12 +1243,16 @@ static void decode_dji_message(AerialDevice *device, const uint8_t *data, size_t
         double ve = rd_i16le(&data[35]);
         double spd = sqrt(vn * vn + ve * ve);
         device->speed_horizontal = (spd >= 0.0 && spd <= 120.0) ? (float)spd : -1.0f;
+    }
 
-        // Yaw/heading: raw/100 = degrees.
-        double yaw = rd_i16le(&data[43]) / 100.0;
-        if (yaw >= -360.0 && yaw <= 360.0) {
-            device->direction = (float)(yaw < 0 ? yaw + 360.0 : yaw);
-        }
+    // Yaw/heading: raw/100 = degrees. This is the aircraft's compass/IMU
+    // reading, independent of GPS -- it's present (and changes when the
+    // airframe is physically turned) even indoors with no GPS lock, so it
+    // must NOT be gated behind latlon_sane() above or it freezes at whatever
+    // the last valid-GPS reading happened to be.
+    double yaw = rd_i16le(&data[43]) / 100.0;
+    if (yaw >= -360.0 && yaw <= 360.0) {
+        device->direction = (float)(yaw < 0 ? yaw + 360.0 : yaw);
     }
 
     // Operator / takeoff (home) point -- the counter-surveillance payoff.
@@ -1213,6 +1284,8 @@ static void check_drone_network(AerialDevice *device, const char *ssid) {
                 snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "Autel");
             } else if (strstr(ssid, "SKYDIO") || strstr(ssid, "Skydio")) {
                 snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "Skydio");
+            } else if (strstr(ssid, "Aerodome") || strstr(ssid, "Anzu")) {
+                snprintf(device->vendor, AERIAL_VENDOR_MAX_LEN, "Flock/Anzu");
             }
             break;
         }
@@ -1406,6 +1479,10 @@ void aerial_detector_set_diagnostics(bool enable) {
     diag_seen_oui_count = 0;
     diag_frames = diag_mgmt = diag_dji_oui_hits = diag_droneid_hits = 0;
     diag_last_log_ms = 0;
+    memset(diag_seen_subcmd, 0, sizeof(diag_seen_subcmd));
+#ifndef CONFIG_IDF_TARGET_ESP32S2
+    diag_seen_dji_ble = false;
+#endif
 }
 
 bool aerial_detector_diagnostics_enabled(void) {

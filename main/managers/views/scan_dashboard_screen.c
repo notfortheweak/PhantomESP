@@ -2,7 +2,9 @@
 // per category. Tapping a tile drills into its live signal list
 // (scan_list_view); the "Menu" button (or hardware back) returns to the main
 // menu. The scan scheduler keeps running while drilling into sub-views — it is
-// stopped only when leaving Live Scan for the main menu.
+// stopped when leaving Live Scan for the main menu, UNLESS the user has
+// Background Threat Alerts enabled (Settings > Saving), in which case it
+// keeps running past this screen so drone/camera/etc. toasts can still fire.
 #include "managers/views/scan_dashboard_screen.h"
 
 #include "sdkconfig.h"
@@ -186,10 +188,19 @@ static void go_to_menu(void) {
         G_Settings.display_timeout_ms = s_saved_timeout;   // restore sleep behavior
         s_screen_forced = false;
     }
-    scan_scheduler_stop();
-    // Safe even though the scheduler may still be finishing its current phase:
-    // the accumulator is mutex-guarded and every accessor no-ops once freed.
-    scan_report_free();
+    // Background Threat Alerts (Settings > Saving) keeps the scheduler running
+    // past this screen so toasts can still fire from the main menu/settings/
+    // clock/lockscreen; only tear it down here when that's off, matching the
+    // original behavior.
+    if (!settings_get_bg_threat_alerts_enabled(&G_Settings)) {
+        scan_scheduler_stop();
+        // Safe even though the scheduler may still be finishing its current
+        // phase: the accumulator is mutex-guarded and every accessor no-ops
+        // once freed.
+        scan_report_free();
+    } else {
+        scan_scheduler_set_focus(-1);   // resume round-robin instead of whatever tile was focused
+    }
     display_manager_switch_view(&main_menu_view);
 }
 

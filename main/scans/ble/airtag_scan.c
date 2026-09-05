@@ -73,21 +73,33 @@ static bool is_airtag_pattern(const uint8_t *payload, size_t len) {
     if (payload == NULL || len < 4) {
         return false;
     }
-    
-    for (size_t i = 0; i + 2 < len; i++) {
-        // Apple "Find My" (Offline Finding) beacon: manufacturer-data
-        // company ID 0x004C (bytes 0x4C 0x00) immediately followed by the
-        // Apple message type 0x12 (Find My). AirTags and third-party Find My
-        // trackers broadcast type 0x12; AirPods use 0x07 (proximity pairing)
-        // and iPhones/other Apple gear use 0x0F/0x10 (nearby). The old check
-        // also accepted the bare company ID (0x1E 0xFF 0x4C 0x00) with no type
-        // byte, which matched EVERY Apple device -- that is why open AirPods
-        // were reported as AirTags. Requiring the 0x12 type byte fixes it;
-        // non-Find-My Apple devices now fall through to the general BLE list.
-        if (payload[i] == 0x4C && payload[i + 1] == 0x00 &&
-            payload[i + 2] == 0x12) {
+
+    // Walk the BLE advertisement's AD structures ([length][type][data...]) and
+    // match ONLY the manufacturer-specific-data field (AD type 0xFF) whose
+    // Apple company ID (0x4C 0x00) is followed by the Apple message type 0x12
+    // (Find My / Offline Finding). AirTags and third-party Find My trackers
+    // broadcast type 0x12; AirPods use 0x07 (proximity pairing), iPhones/other
+    // Apple gear use 0x0F/0x10 (nearby) -- all of which now fall through to the
+    // general BLE list.
+    //
+    // Anchoring to the AD field is what actually fixes the AirPods false hit: a
+    // raw byte-scan of the whole payload for "4C 00 12" also matches that run
+    // when it appears by coincidence *inside* AirPods proximity-pairing data,
+    // so open AirPods were still reported as AirTags. Parsing the AD structure
+    // checks the company ID + type only where they are structurally meaningful.
+    size_t i = 0;
+    while (i < len) {
+        uint8_t ad_len = payload[i];
+        if (ad_len == 0) break;               // end of data / padding
+        if (i + 1 + ad_len > len) break;      // truncated AD structure
+        uint8_t ad_type = payload[i + 1];
+        const uint8_t *ad_data = &payload[i + 2];
+        size_t ad_data_len = (size_t)ad_len - 1;
+        if (ad_type == 0xFF && ad_data_len >= 3 &&
+            ad_data[0] == 0x4C && ad_data[1] == 0x00 && ad_data[2] == 0x12) {
             return true;
         }
+        i += 1 + ad_len;                      // advance to next AD structure
     }
     return false;
 }

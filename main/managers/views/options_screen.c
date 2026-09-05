@@ -29,6 +29,10 @@
 #include "managers/self_ota_manager.h"
 #include "managers/wifi_manager.h"
 #include "managers/ap_manager.h"
+#include "managers/scan_scheduler.h"
+#include "gui/scan_report.h"
+#include "managers/views/scan_dashboard_screen.h"
+#include "managers/views/scan_list_screen.h"
 #include "gui/popup.h"
 #include "gui/toast.h"
 #include "core/utils.h"
@@ -1413,6 +1417,7 @@ static SettingsItem settings_items[] = {
 
     {"Web Auth", SETTING_WEB_AUTH, bool_options, 2, 1, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_TOGGLE},
     {"AP Enabled", SETTING_AP_ENABLED, bool_options, 2, 1, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_TOGGLE},
+    {"Background Threat Alerts", SETTING_BG_THREAT_ALERTS, bool_options, 2, 1, SETTINGS_CAT_SCAN_SAVING, false, NULL, SETTING_WIDGET_TOGGLE},
     {"WebUI AP Only", SETTING_WEBUI_AP_ONLY, bool_options, 2, 1, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_TOGGLE},
     {"AP SSID", SETTING_AP_SSID, action_options, 1, 0, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"AP Password", SETTING_AP_PASSWORD, action_options, 1, 0, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
@@ -3010,6 +3015,9 @@ static void load_current_settings_values(void) {
             case SETTING_AP_ENABLED:
                 settings_items[i].current_value = settings_get_ap_enabled(&G_Settings) ? 1 : 0;
                 break;
+            case SETTING_BG_THREAT_ALERTS:
+                settings_items[i].current_value = settings_get_bg_threat_alerts_enabled(&G_Settings) ? 1 : 0;
+                break;
             case SETTING_POWER_SAVE:
                 settings_items[i].current_value = settings_get_power_save_enabled(&G_Settings) ? 1 : 0;
                 break;
@@ -3305,6 +3313,24 @@ static void apply_setting_change(int setting_index, int new_value) {
                 ap_manager_start_services();
             } else {
                 ap_manager_stop_services();
+            }
+            break;
+        case SETTING_BG_THREAT_ALERTS:
+            settings_set_bg_threat_alerts_enabled(&G_Settings, new_value == 1);
+            if (new_value == 1) {
+                // Take effect immediately rather than waiting for a reboot.
+                // Idempotent: safe even if the Live Scan screen already has
+                // the scheduler running.
+                scan_report_alloc();
+                scan_scheduler_set_focus(-1);
+                scan_scheduler_start();
+            } else if (!scan_dashboard_view.root && !scan_list_view.root &&
+                       !scan_signal_view.root) {
+                // Only tear it down if the user isn't actively looking at
+                // Live Scan right now -- that screen owns the scheduler's
+                // lifecycle while it's open.
+                scan_scheduler_stop();
+                scan_report_free();
             }
             break;
         case SETTING_POWER_SAVE:

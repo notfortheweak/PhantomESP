@@ -38,7 +38,7 @@ typedef enum { SKIND_DEFAULT = 0, SKIND_AP, SKIND_STATION } scan_kind_t;
 typedef struct {
     char        title[34];    // primary id / dedup key (SSID / device name / MAC)
     char        addr[20];     // MAC / BSSID string ("" if none)
-    char        sub[36];      // secondary (type / assoc AP #id / channel / method)
+    char        sub[48];      // secondary (AP #id + channel + BSSID / assoc AP / method)
     int8_t      rssi;
     bool        has_rssi;
     scan_kind_t kind;

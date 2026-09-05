@@ -9,6 +9,7 @@ typedef enum {
     BLE_DETECT_DEVICE_AIRTAG,
     BLE_DETECT_DEVICE_FLIPPER,
     BLE_DETECT_DEVICE_SKIMMER,
+    BLE_DETECT_DEVICE_APPLE,   // benign Apple gear (AirPods/audio pairing), NOT a tag
 } BLEDetectDeviceType;
 
 typedef struct {

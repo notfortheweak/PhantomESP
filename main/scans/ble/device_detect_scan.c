@@ -175,21 +175,47 @@ static const char *detect_flipper_type_from_adv(const uint8_t *data, size_t len)
     return found_type;
 }
 
-static bool is_airtag_pattern(const uint8_t *payload, size_t len) {
-    if (payload == NULL || len < 4) {
-        return false;
-    }
-
-    for (size_t i = 0; i <= len - 4; i++) {
-        if ((payload[i] == 0x1E && payload[i + 1] == 0xFF && payload[i + 2] == 0x4C &&
-             payload[i + 3] == 0x00) ||
-            (payload[i] == 0x4C && payload[i + 1] == 0x00 && payload[i + 2] == 0x12 &&
-             payload[i + 3] == 0x19)) {
+// Walk the advertisement's AD structures ([length][type][data...]) and return
+// the first Apple manufacturer-specific-data field (AD type 0xFF, company ID
+// 0x4C 0x00). *apple_msg_type gets the Apple continuity message type byte (the
+// byte after the company ID). Returns false if there is no Apple mfg-data field.
+// Parsing the structure (rather than byte-scanning the whole payload) is what
+// keeps a coincidental "4C 00 xx" run inside some other field from matching.
+static bool apple_msg_type(const uint8_t *payload, size_t len, uint8_t *out_type) {
+    if (payload == NULL) return false;
+    size_t i = 0;
+    while (i < len) {
+        uint8_t ad_len = payload[i];
+        if (ad_len == 0) break;               // end of data / padding
+        if (i + 1 + ad_len > len) break;      // truncated AD structure
+        uint8_t ad_type = payload[i + 1];
+        const uint8_t *ad_data = &payload[i + 2];
+        size_t ad_data_len = (size_t)ad_len - 1;
+        if (ad_type == 0xFF && ad_data_len >= 3 &&
+            ad_data[0] == 0x4C && ad_data[1] == 0x00) {
+            if (out_type) *out_type = ad_data[2];
             return true;
         }
+        i += 1 + ad_len;                      // advance to next AD structure
     }
-
     return false;
+}
+
+// Apple "Find My" (Offline Finding) beacon: Apple mfg-data with message type
+// 0x12. AirTags and third-party Find My trackers use 0x12. AirPods use 0x07
+// (proximity pairing); requiring 0x12 stops open AirPods being mislabelled as
+// AirTags (they now match is_apple_proximity_pairing instead and list as Apple).
+static bool is_airtag_pattern(const uint8_t *payload, size_t len) {
+    uint8_t t = 0;
+    return apple_msg_type(payload, len, &t) && t == 0x12;
+}
+
+// Apple proximity pairing (message type 0x07) — broadcast by AirPods / Beats and
+// other Apple audio when the case is opened / in pairing range. Lets these show
+// under BLE as benign Apple gear, clearly distinct from an AirTag.
+static bool is_apple_proximity_pairing(const uint8_t *payload, size_t len) {
+    uint8_t t = 0;
+    return apple_msg_type(payload, len, &t) && t == 0x07;
 }
 
 static bool is_suspicious_skimmer_name(const char *name) {
@@ -210,6 +236,8 @@ const char *ble_device_detect_type_to_string(BLEDetectDeviceType type) {
     switch (type) {
     case BLE_DETECT_DEVICE_AIRTAG:
         return "AirTag";
+    case BLE_DETECT_DEVICE_APPLE:
+        return "Apple";
     case BLE_DETECT_DEVICE_FLIPPER:
         return "Flipper";
     case BLE_DETECT_DEVICE_SKIMMER:
@@ -265,6 +293,8 @@ static void ble_device_detect_callback(struct ble_gap_event *event, size_t len) 
         detected_type = BLE_DETECT_DEVICE_FLIPPER;
     } else if (is_airtag_pattern(event->disc.data, event->disc.length_data)) {
         detected_type = BLE_DETECT_DEVICE_AIRTAG;
+    } else if (is_apple_proximity_pairing(event->disc.data, event->disc.length_data)) {
+        detected_type = BLE_DETECT_DEVICE_APPLE;
     } else if (is_suspicious_skimmer_name(adv_name)) {
         detected_type = BLE_DETECT_DEVICE_SKIMMER;
         detected_subtype = "Name Match";

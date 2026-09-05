@@ -16,6 +16,15 @@
 #include "managers/aerial_detector_manager.h"
 #include "managers/gps_manager.h"
 #include "managers/views/scan_list_screen.h"
+#include "esp_timer.h"
+
+// The device table never evicts an entry on its own (find_or_create_device
+// keeps updating the same slot forever, see aerial_detector_manager.c), so
+// aerial_detector_find_device_by_mac() below is never actually NULL for a MAC
+// that was heard even once -- staleness has to be judged here, from how long
+// ago the last frame arrived, or powering off the drone/controller looks
+// identical to it still being live.
+#define AERIAL_SIGNAL_LOST_MS 5000
 
 static char s_mac[20];
 void aerial_detail_set_mac(const char *mac) {
@@ -65,6 +74,14 @@ static void render(void) {
         return;
     }
     dev = *live;   // snapshot; the sniffer keeps updating the live copy
+
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    uint32_t age_ms = now_ms - dev.last_seen_ms;
+    if (age_ms > AERIAL_SIGNAL_LOST_MS) {
+        lv_label_set_text_fmt(s_body, "Signal lost.\nNo frames heard for %lu s.",
+                              (unsigned long)(age_ms / 1000));
+        return;
+    }
 
     char buf[512];
     int p = 0;

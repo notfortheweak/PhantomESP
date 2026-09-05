@@ -66,6 +66,7 @@ static const char *NVS_WEBUI_AP_ONLY_KEY = "webui_ap";
 static const char *NVS_ESP_COMM_TX_PIN_KEY = "esp_comm_tx";
 static const char *NVS_ESP_COMM_RX_PIN_KEY = "esp_comm_rx";
 static const char *NVS_AP_ENABLED_KEY = "ap_enabled";
+static const char *NVS_BG_THREAT_ALERTS_KEY = "bg_threat_en";
 static const char *NVS_POWER_SAVE_KEY = "power_save";
 static const char *NVS_ZEBRA_MENUS_KEY = "zebra_menus";
 static const char *NVS_MAX_SCREEN_BRIGHTNESS_KEY = "max_bright";
@@ -230,6 +231,7 @@ void settings_set_defaults(FSettings *settings) {
 #endif
   }
   settings->ap_enabled = true; // Default to enabled
+  settings->bg_threat_alerts_enabled = false; // Opt-in: unverified against radio-heavy attack screens
   settings->power_save_enabled = false;
   settings->zebra_menus_enabled = false; // or true if you want it enabled by default
   settings->max_screen_brightness = 100; // Default to 100% brightness
@@ -620,6 +622,11 @@ void settings_load(FSettings *settings) {
     settings->ap_enabled = true; // Default to enabled if not found
   }
 
+  err = nvs_get_u8(nvsHandle, NVS_BG_THREAT_ALERTS_KEY, &value_u8);
+  if (err == ESP_OK) {
+    settings->bg_threat_alerts_enabled = (value_u8 != 0);
+  }
+
   err = nvs_get_u8(nvsHandle, NVS_POWER_SAVE_KEY, &value_u8);
   if (err == ESP_OK) {
     settings->power_save_enabled = (value_u8 != 0);
@@ -962,6 +969,10 @@ void settings_persist_setting(SettingsType setting) {
         case SETTING_AP_ENABLED:
             err = nvs_set_u8(nvsHandle, NVS_AP_ENABLED_KEY, G_Settings.ap_enabled);
             key = NVS_AP_ENABLED_KEY;
+            break;
+        case SETTING_BG_THREAT_ALERTS:
+            err = nvs_set_u8(nvsHandle, NVS_BG_THREAT_ALERTS_KEY, G_Settings.bg_threat_alerts_enabled);
+            key = NVS_BG_THREAT_ALERTS_KEY;
             break;
         case SETTING_POWER_SAVE:
             err = nvs_set_u8(nvsHandle, NVS_POWER_SAVE_KEY, G_Settings.power_save_enabled);
@@ -1342,6 +1353,7 @@ esp_err_t settings_save(const FSettings *settings) {
     NVS_SET(nvs_set_u8(nvsHandle, NVS_WEB_AUTH_KEY, settings->web_auth_enabled ? 1 : 0));
     NVS_SET(nvs_set_u8(nvsHandle, NVS_WEBUI_AP_ONLY_KEY, settings->webui_restrict_to_ap ? 1 : 0));
     NVS_SET(nvs_set_u8(nvsHandle, NVS_AP_ENABLED_KEY, settings->ap_enabled ? 1 : 0));
+    NVS_SET(nvs_set_u8(nvsHandle, NVS_BG_THREAT_ALERTS_KEY, settings->bg_threat_alerts_enabled ? 1 : 0));
     NVS_SET(nvs_set_u8(nvsHandle, NVS_POWER_SAVE_KEY, settings->power_save_enabled ? 1 : 0));
     NVS_SET(nvs_set_i32(nvsHandle, NVS_ESP_COMM_TX_PIN_KEY, settings->esp_comm_tx_pin));
     NVS_SET(nvs_set_i32(nvsHandle, NVS_ESP_COMM_RX_PIN_KEY, settings->esp_comm_rx_pin));
@@ -1663,6 +1675,14 @@ void settings_set_ap_enabled(FSettings *settings, bool enabled) {
 
 bool settings_get_ap_enabled(const FSettings *settings) {
   return settings->ap_enabled;
+}
+
+void settings_set_bg_threat_alerts_enabled(FSettings *settings, bool enabled) {
+  settings->bg_threat_alerts_enabled = enabled;
+}
+
+bool settings_get_bg_threat_alerts_enabled(const FSettings *settings) {
+  return settings->bg_threat_alerts_enabled;
 }
 
 void settings_set_power_save_enabled(FSettings *settings, bool enabled) {

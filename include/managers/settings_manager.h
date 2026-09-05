@@ -91,6 +91,7 @@ typedef enum {
     SETTING_NAV_BUTTONS,
     SETTING_MENU_LAYOUT,
     SETTING_AUTO_SAVE_SCANS,
+    SETTING_BG_THREAT_ALERTS,
 #ifdef CONFIG_WITH_STATUS_DISPLAY
     SETTING_IDLE_ANIMATION,
     SETTING_IDLE_ANIM_DELAY,
@@ -264,6 +265,13 @@ typedef struct {
   int32_t esp_comm_rx_pin; // ESP communication RX pin
   bool ap_enabled; // Enable/disable AP across reboots
   bool power_save_enabled;
+  // Keep the Live Scan threat scheduler (drones/cameras/PineAP/etc.) running
+  // in the background outside the Live Scan screen -- main menu, settings,
+  // clock, lockscreen -- so a toast+haptic alert can fire no matter what's on
+  // screen. Opt-in (default off): it hasn't been hardened against every
+  // WiFi/BLE attack screen's own radio init/deinit, so leaving it on while
+  // running an attack tool is unverified.
+  bool bg_threat_alerts_enabled;
   bool zebra_menus_enabled;
   uint8_t max_screen_brightness; // Max screen brightness (0-100)
 
@@ -467,6 +475,8 @@ void settings_print_namespace_stats(const char *namespace_name);
 // Getter and Setter for AP enabled state
 void settings_set_ap_enabled(FSettings *settings, bool enabled);
 bool settings_get_ap_enabled(const FSettings *settings);
+void settings_set_bg_threat_alerts_enabled(FSettings *settings, bool enabled);
+bool settings_get_bg_threat_alerts_enabled(const FSettings *settings);
 
 // Getter and Setter for power save enabled state
 bool settings_get_power_save_enabled(const FSettings *settings);

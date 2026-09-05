@@ -445,13 +445,23 @@ bool is_file_sharing_port(uint16_t port) {
 // Surveillance + drone vendor OUIs (see header for the rules)
 // ----------------------------------------------------------------------------
 // Generated from the IEEE MA-L registry (standards-oui.ieee.org/oui/oui.csv) by
-// exact organization-name match, 213 entries across 33 vendors. Deliberately
-// EXCLUDED to avoid false positives: Ubiquiti (its ~48 OUIs are overwhelmingly
-// WiFi APs, not cameras), Sony's ~86 consumer OUIs (only the 5 security-camera
-// prefixes are listed), Bosch's automotive/thermotech arms, and Motorola
-// Mobility phones. Autel Robotics, Yuneec, Anduril, BRINC, Hubsan, Walkera and
-// EHang have NO IEEE registration, so they are absent rather than guessed at.
-const char *const SURVEIL_VENDOR_NAMES[] = {"Flock Safety", "Axon", "Verkada", "Avigilon", "Genetec", "Hikvision", "Dahua", "Axis Comm", "Hanwha", "Bosch Sec", "Uniview", "Vivotek", "Sony", "i-PRO", "Arecont", "ACTi", "Amcrest", "Reolink", "Lorex", "Arlo", "Wyze", "Ring", "Mobotix", "GeoVision", "Digital Watchdog", "Honeywell Vid", "FLIR", "DJI", "Parrot", "Skydio", "Teal Drones", "Freefly", "PowerVision"};
+// exact organization-name match, 231 entries across 35 vendors (2026-09: added
+// "Hangzhou Ezviz Software Co.,Ltd." (15 OUIs, Hikvision's consumer-cam brand)
+// and "Tiandy Technologies Co.,LTD" (3 OUIs, a large Chinese CCTV maker)).
+// Deliberately EXCLUDED to avoid false positives: Ubiquiti (its ~48 OUIs are
+// overwhelmingly WiFi APs, not cameras), Sony's ~86 consumer OUIs (only the 5
+// security-camera prefixes are listed), Bosch's automotive/thermotech arms,
+// Motorola Mobility phones, and TP-Link/D-Link/Google/Logitech/Xiaomi (each
+// has 100+ general-purpose-electronics OUIs with no camera-only subset to
+// isolate). Autel Robotics, Anzu Robotics (Flock Safety's drone-as-first-
+// responder partner), Yuneec, Anduril, BRINC, Hubsan, Walkera, EHang, Foscam,
+// Eufy/Anker, Nest, Swann, Speco, Vicon, Pelco and Meraki have NO IEEE
+// registration under those names, so they are absent rather than guessed at
+// -- checked directly against the registry 2026-09, re-verify before trusting
+// this list stale. Autel and Anzu/Flock drones are instead caught by SSID
+// pattern in drone_ssid_patterns[] below (OUI-independent, so it also survives
+// vendors that randomize their DroneID transmitter MAC).
+const char *const SURVEIL_VENDOR_NAMES[] = {"Flock Safety", "Axon", "Verkada", "Avigilon", "Genetec", "Hikvision", "Dahua", "Axis Comm", "Hanwha", "Bosch Sec", "Uniview", "Vivotek", "Sony", "i-PRO", "Arecont", "ACTi", "Amcrest", "Reolink", "Lorex", "Arlo", "Wyze", "Ring", "Mobotix", "GeoVision", "Digital Watchdog", "Honeywell Vid", "FLIR", "DJI", "Parrot", "Skydio", "Teal Drones", "Freefly", "PowerVision", "EZVIZ", "Tiandy"};
 const size_t SURVEIL_VENDOR_COUNT = sizeof(SURVEIL_VENDOR_NAMES) / sizeof(SURVEIL_VENDOR_NAMES[0]);
 
 const surveil_oui_t SURVEIL_OUIS[] = {
@@ -495,6 +505,7 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0x08EDED, 6, 0},
     {0x0C75D2, 5, 0},
     {0x0C9AE6, 27, 2},
+    {0x0CA64C, 33, 0},
     {0x0CBF15, 4, 1},
     {0x1012FB, 5, 0},
     {0x14A78B, 6, 0},
@@ -504,6 +515,7 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0x188025, 5, 0},
     {0x201F55, 27, 2},
     {0x202C05, 6, 0},
+    {0x20BBBC, 33, 0},
     {0x240F9B, 5, 0},
     {0x2428FD, 5, 0},
     {0x242BD6, 21, 0},
@@ -520,10 +532,13 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0x340962, 5, 0},
     {0x343EA4, 21, 0},
     {0x3491F0, 27, 2},
+    {0x34C6DD, 33, 0},
     {0x34D262, 27, 2},
     {0x381D14, 29, 2},
     {0x38AF29, 6, 0},
+    {0x38F25D, 33, 0},
     {0x3C1BF8, 5, 0},
+    {0x3CDA6D, 34, 0},
     {0x3CE36B, 6, 0},
     {0x3CEF8C, 6, 0},
     {0x407AA4, 6, 0},
@@ -549,16 +564,20 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0x547D40, 32, 2},
     {0x548C81, 5, 0},
     {0x54C415, 5, 0},
+    {0x54D60D, 33, 0},
     {0x54E019, 21, 0},
     {0x5803FB, 5, 0},
     {0x5850ED, 5, 0},
+    {0x588FCF, 33, 0},
     {0x58B858, 27, 2},
     {0x5C345B, 5, 0},
     {0x5C475E, 21, 0},
     {0x5CF51A, 6, 0},
     {0x60601F, 27, 2},
+    {0x64244D, 33, 0},
     {0x649A63, 21, 0},
     {0x64DB8B, 5, 0},
+    {0x64F2FB, 33, 0},
     {0x64FD29, 6, 0},
     {0x686DBC, 5, 0},
     {0x6C1C71, 6, 0},
@@ -566,6 +585,8 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0x701AD5, 3, 1},
     {0x743FC2, 5, 0},
     {0x74C929, 6, 0},
+    {0x78A6A0, 33, 0},
+    {0x78C1AE, 33, 0},
     {0x7C78B2, 20, 0},
     {0x80482C, 20, 0},
     {0x80489F, 5, 0},
@@ -586,6 +607,7 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0x903AE6, 28, 2},
     {0x90486C, 21, 0},
     {0x94E1AC, 5, 0},
+    {0x94EC13, 33, 0},
     {0x988B0A, 5, 0},
     {0x989DE5, 5, 0},
     {0x98DF82, 5, 0},
@@ -607,6 +629,7 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0xA4D5C2, 5, 0},
     {0xA8CA87, 6, 0},
     {0xA8DC5A, 24, 0},
+    {0xAC1C26, 33, 0},
     {0xAC9FC3, 21, 0},
     {0xACB92F, 5, 0},
     {0xACCB51, 5, 0},
@@ -620,6 +643,7 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0xB8A44F, 7, 0},
     {0xBC2978, 5, 0},
     {0xBC325F, 6, 0},
+    {0xBC516C, 34, 0},
     {0xBC5E33, 5, 0},
     {0xBC9B5E, 5, 0},
     {0xBCAD28, 5, 0},
@@ -651,18 +675,22 @@ const surveil_oui_t SURVEIL_OUIS[] = {
     {0xE43022, 8, 0},
     {0xE47A2C, 27, 2},
     {0xE4D58B, 5, 0},
+    {0xE4E66C, 34, 0},
     {0xE82725, 7, 0},
     {0xE8A0ED, 5, 0},
     {0xEC715E, 31, 2},
     {0xEC71DB, 17, 0},
     {0xEC72F7, 27, 2},
+    {0xEC97E0, 33, 0},
     {0xECA971, 5, 0},
     {0xECC89C, 5, 0},
     {0xF0C88B, 20, 0},
+    {0xF47018, 33, 0},
     {0xF4B1C2, 6, 0},
     {0xF84068, 27, 2},
     {0xF84DFC, 5, 0},
     {0xF8CE07, 6, 0},
+    {0xFC2422, 33, 0},
     {0xFC5F49, 6, 0},
     {0xFC9C98, 19, 0},
     {0xFC9FFD, 5, 0},

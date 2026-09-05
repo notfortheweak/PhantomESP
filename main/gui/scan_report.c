@@ -85,8 +85,12 @@ static bool wifi_ap_get(int i, scan_sig_t *o) {
     int id = ap_id_for(a->bssid);
     snprintf(o->title, sizeof(o->title), "%s", a->ssid[0] ? (const char *)a->ssid : "(hidden)");
     set_mac(o->addr, sizeof(o->addr), a->bssid);
-    if (id >= 0) snprintf(o->sub, sizeof(o->sub), "AP #%d  CH %d", id, a->primary);
-    else         snprintf(o->sub, sizeof(o->sub), "AP  CH %d", a->primary);
+    // Show the BSSID on the row: a dual-band/mesh network (and a same-name "evil
+    // twin") broadcasts one SSID from several MACs, so the BSSID is what makes
+    // each physical AP distinct. Rows are still deduped per-BSSID (same_signal),
+    // so each MAC appears exactly once.
+    if (id >= 0) snprintf(o->sub, sizeof(o->sub), "#%d CH%d %s", id, a->primary, o->addr);
+    else         snprintf(o->sub, sizeof(o->sub), "CH%d %s", a->primary, o->addr);
     o->rssi = a->rssi; o->has_rssi = true; o->kind = SKIND_AP;
     return true;
 }
@@ -116,7 +120,12 @@ static bool drones_get(int i, scan_sig_t *o) {
     if (!d) return false;
     snprintf(o->title, sizeof(o->title), "%s", d->vendor[0] ? d->vendor : "Drone");
     snprintf(o->addr, sizeof(o->addr), "%s", d->mac);
-    snprintf(o->sub, sizeof(o->sub), "%s", aerial_detector_get_type_string(d->type));
+    // MAC first: with two DroneID identities for one physical aircraft a real
+    // possibility (legacy DJI vendor-IE vs standards-based OpenDroneID can come
+    // from different transmitter MACs), the type string alone ("DJI WiFi" on
+    // both rows) can't tell two entries apart -- the MAC can.
+    snprintf(o->sub, sizeof(o->sub), "%s (%s)", d->mac,
+             aerial_detector_get_type_string(d->type));
     o->rssi = d->rssi; o->has_rssi = true; o->kind = SKIND_DEFAULT;
     return true;
 }
@@ -256,7 +265,7 @@ const scan_category_t *scan_report_category(scan_category_id_t id) {
 typedef struct {
     char        title[34];
     char        addr[20];
-    char        sub[36];
+    char        sub[48];
     int8_t      rssi;
     bool        has_rssi;
     scan_kind_t kind;

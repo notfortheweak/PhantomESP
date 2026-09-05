@@ -11,6 +11,8 @@
 #include "managers/haptic_manager.h"
 #include "managers/sd_card_manager.h"
 #include "managers/settings_manager.h"
+#include "managers/scan_scheduler.h"
+#include "gui/scan_report.h"
 #include "managers/ota_manager.h"
 #include "managers/self_ota_manager.h"
 #include "managers/crash_reporter.h"
@@ -1054,4 +1056,16 @@ void app_main(void) {
     print_boot_banner();
     printf("\n");
     printf("Type 'help' for available commands\n");
+
+    // Opt-in background threat sentinel: keeps the Live Scan scheduler (and
+    // its toast+haptic new-device alerts) running outside the Live Scan
+    // screen -- main menu, settings, clock, lockscreen -- instead of only
+    // while that screen is open. Idempotent/harmless if the user later opens
+    // Live Scan too (that screen's own start/stop just becomes a no-op).
+    if (settings_get_bg_threat_alerts_enabled(&G_Settings)) {
+        scan_report_alloc();
+        scan_scheduler_set_focus(-1);
+        scan_scheduler_start();
+        ESP_LOGI(TAG, "Background threat alerts enabled: Live Scan scheduler started at boot");
+    }
 }
