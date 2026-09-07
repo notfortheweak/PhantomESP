@@ -1,4 +1,4 @@
-# Ghost ESP Changelog
+# PhantomESP Changelog
 
 ## Attribution
 Untagged entries are authored by the core maintainer ([@jaylikesbunda](https://github.com/jaylikesbunda)). A trailing `@handle` credits a guest contributor for that specific line. "Ported from / adapted from" credits the upstream source a feature was based on, not GhostESP authorship.

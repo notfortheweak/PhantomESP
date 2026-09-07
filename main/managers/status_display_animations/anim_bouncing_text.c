@@ -6,8 +6,8 @@
 
 #include <string.h>
 
-static const char *s_text_line1 = "GhostESP:";
-static const char *s_text_line2 = "Revival";
+static const char *s_text_line1 = "Phantom";
+static const char *s_text_line2 = "ESP";
 static int s_text_x = 0;
 static int s_text_y = 0;
 static int s_vx = 2;

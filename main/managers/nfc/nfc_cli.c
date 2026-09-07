@@ -1195,11 +1195,11 @@ static bool nfc_cli_make_default_ndef(uint8_t **out_mem, size_t *out_len, uint8_
     size_t tlv_len = 0;
     char payload[96];
     if (first_arg < argc && strcmp(argv[first_arg], "text") == 0) {
-        nfc_cli_join_args(argc, argv, first_arg + 1, "GhostESP NFC test", payload, sizeof(payload));
+        nfc_cli_join_args(argc, argv, first_arg + 1, "PhantomESP NFC test", payload, sizeof(payload));
         if (!nfc_cli_make_ndef_text(payload, tlv, sizeof(tlv), &tlv_len)) return false;
     } else {
         if (first_arg < argc && strcmp(argv[first_arg], "url") == 0) first_arg++;
-        nfc_cli_join_args(argc, argv, first_arg, "https://ghostesp.net", payload, sizeof(payload));
+        nfc_cli_join_args(argc, argv, first_arg, "https://example.com", payload, sizeof(payload));
         if (!nfc_cli_make_ndef_uri(payload, tlv, sizeof(tlv), &tlv_len)) return false;
     }
     uint16_t pages = 0;
@@ -1625,7 +1625,7 @@ void handle_nfctest_cmd(int argc, char **argv) {
 #ifdef CONFIG_NFC_ST25R3916
     if (argc >= 3 && strcmp(argv[1], "emulate") == 0 &&
         (strcmp(argv[2], "ndef") == 0 || strcmp(argv[2], "ntag") == 0)) {
-        char *emu_argv[6] = {"nfc", "emulate", "ndef", "url", "https://ghostesp.net", NULL};
+        char *emu_argv[6] = {"nfc", "emulate", "ndef", "url", "https://example.com", NULL};
         handle_nfc_cmd(5, emu_argv);
         return;
     }

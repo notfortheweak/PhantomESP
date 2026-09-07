@@ -2012,7 +2012,7 @@ void wifi_manager_connect_wifi(const char *ssid, const char *password) {
 
     // Match the init policy: keep the AP half only when the SoftAP is enabled,
     // otherwise connect STA-only so the AP interface's internal RAM stays freed
-    // during normal connected operation (this is the state Cloud Store runs in).
+    // during normal connected operation.
     wifi_mode_t connect_mode = settings_get_ap_enabled(&G_Settings) ? WIFI_MODE_APSTA : WIFI_MODE_STA;
     esp_err_t err = esp_wifi_set_mode(connect_mode);
     if (err != ESP_OK) {

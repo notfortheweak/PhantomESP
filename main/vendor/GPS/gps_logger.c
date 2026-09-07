@@ -416,7 +416,7 @@ static void csv_build_pre_header(void) {
         snprintf(board, sizeof(board), "board=%s", board_str);
         csv_escape_field(f6, sizeof(f6), board);
     }
-    csv_escape_field(f7, sizeof(f7), "brand=GhostESP");
+    csv_escape_field(f7, sizeof(f7), "brand=PhantomESP");
     csv_escape_field(f8, sizeof(f8), "star=Sol");
     csv_escape_field(f9, sizeof(f9), "body=3");
     csv_escape_field(f10, sizeof(f10), "subBody=0");

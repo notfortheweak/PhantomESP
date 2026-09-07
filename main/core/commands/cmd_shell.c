@@ -491,7 +491,7 @@ void handle_whoami_cmd(int argc, char **argv) {
 }
 void handle_status_cmd(int argc, char **argv) {
     (void)argc; (void)argv;
-    glog("GhostESP status\n");
+    glog("PhantomESP status\n");
     glog("  uptime: ");
     handle_uptime_cmd(0, NULL);
     glog("  heap: %u bytes free\n", (unsigned)esp_get_free_heap_size());

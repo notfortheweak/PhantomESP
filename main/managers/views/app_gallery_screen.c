@@ -18,7 +18,6 @@
 #include "managers/views/accelerometer_screen.h"
 #endif
 #include "managers/views/clock_screen.h"
-#include "managers/views/cloud_store_screen.h"
 #ifdef CONFIG_HAS_AUDIO_PLAYER
 #include "managers/views/audio_player_screen.h"
 #endif
@@ -136,13 +135,6 @@ static const app_item_t builtin_app_items[] = {
         .view = &ghostscript_browser_view,
     },
 #endif
-    {
-        .name = "Store",
-        .asset_key = NULL,
-        .symbol_icon = LV_SYMBOL_DOWNLOAD,
-        .palette_index = 3,
-        .view = &cloud_store_view,
-    },
     {
         .name = "Clock",
         .asset_key = "clock_icon",

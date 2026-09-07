@@ -4,7 +4,7 @@
 #define BADUSB_BUILTIN_SCRIPT_NAME "Ghost Art (Built-in)"
 
 static const char badusb_builtin_script[] =
-    "REM Ghost ESP - Opens Notepad and types ASCII ghost art\n"
+    "REM PhantomESP - Opens Notepad and types ASCII ghost art\n"
     "GUI r\n"
     "DELAY 500\n"
     "STRING notepad\n"

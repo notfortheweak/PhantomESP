@@ -194,7 +194,7 @@ void status_anim_hud_step(TickType_t now, int frame, const StatusAnimGfx *gfx)
         draw_bar(gfx, sd_bar_x, sd_bar_y, sd_bar_w, sd_bar_h, stats.sd_used_pct);
     }
 
-    const char *vert = "GhostESP: Revival";
+    const char *vert = "PhantomESP";
     int len = (int)strlen(vert);
     int char_h = gfx->font_char_width * gfx->scale_y;
     int letter_gap = 1;

@@ -1,8 +1,0 @@
-/infrared/* /latest/infrared/:splat 200
-/getting-started/* /latest/getting-started/:splat 200
-/nfc/* /latest/nfc/:splat 200
-/firmware/* /latest/firmware/:splat 200
-/hardware/* /latest/hardware/:splat 200
-/docs/latest/* /latest/:splat 301
-/docs/v1.8/* /v1.8/:splat 301
-/docs/* /latest/:splat 200

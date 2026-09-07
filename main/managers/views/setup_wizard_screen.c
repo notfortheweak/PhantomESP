@@ -167,7 +167,7 @@ static void ap_ssid_callback(const char *text) {
             strncpy(temp_ap_ssid, def, sizeof(temp_ap_ssid) - 1);
             temp_ap_ssid[sizeof(temp_ap_ssid) - 1] = '\0';
         } else {
-            strncpy(temp_ap_ssid, "GhostESP", sizeof(temp_ap_ssid) - 1);
+            strncpy(temp_ap_ssid, "phantomnet", sizeof(temp_ap_ssid) - 1);
         }
     }
     current_step = SETUP_STEP_AP_PASSWORD;
@@ -185,7 +185,7 @@ static void ap_password_callback(const char *text) {
             strncpy(temp_ap_password, def, sizeof(temp_ap_password) - 1);
             temp_ap_password[sizeof(temp_ap_password) - 1] = '\0';
         } else {
-            strncpy(temp_ap_password, "GhostESP", sizeof(temp_ap_password) - 1);
+            strncpy(temp_ap_password, "phantomnet", sizeof(temp_ap_password) - 1);
         }
     }
     current_step = SETUP_STEP_STA_SSID;
@@ -285,7 +285,7 @@ static void show_welcome_screen(void) {
     int btn_y = LV_VER_RES - (USABLE_H * 18 / 100);
     
     lv_obj_t *title = lv_label_create(root);
-    lv_label_set_text(title, "Welcome to GhostESP!");
+    lv_label_set_text(title, "Welcome to PhantomESP!");
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(title, title_font, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, title_y);

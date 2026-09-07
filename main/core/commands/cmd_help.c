@@ -292,7 +292,7 @@ void handle_help(int argc, char **argv) {
     }
 #endif
 
-    glog("\nGhost ESP Command Categories:\n\n");
+    glog("\nPhantomESP Command Categories:\n\n");
 
     glog("  help detect     - Counter-surveillance detection (start here)\n");
     glog("  help sweep      - Full environment sweep, WiFi + BLE\n");

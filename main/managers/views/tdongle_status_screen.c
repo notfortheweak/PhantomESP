@@ -17,10 +17,8 @@ static lv_obj_t *s_text_panel;
 static lv_obj_t *s_line1_label;
 static lv_obj_t *s_line2_label;
 static lv_timer_t *s_idle_timer;
-static char s_line1[TDONGLE_STATUS_LINE_LEN] = "GhostESP";
+static char s_line1[TDONGLE_STATUS_LINE_LEN] = "PhantomESP";
 static char s_line2[TDONGLE_STATUS_LINE_LEN] = "Ready";
-
-extern const lv_img_dsc_t ghostesplogo;
 
 typedef struct {
     char line1[TDONGLE_STATUS_LINE_LEN];
@@ -116,10 +114,9 @@ static void tdongle_status_create(void)
 
     lv_obj_clear_flag(s_root, LV_OBJ_FLAG_SCROLLABLE);
 
-    s_logo_img = lv_img_create(s_root);
-    lv_img_set_src(s_logo_img, &ghostesplogo);
-    lv_img_set_size_mode(s_logo_img, LV_IMG_SIZE_MODE_REAL);
-    lv_img_set_zoom(s_logo_img, 192);
+    s_logo_img = lv_label_create(s_root);
+    lv_label_set_text(s_logo_img, "PhantomESP");
+    lv_obj_set_style_text_color(s_logo_img, lv_color_white(), 0);
     lv_obj_center(s_logo_img);
 
     s_text_panel = lv_obj_create(s_root);

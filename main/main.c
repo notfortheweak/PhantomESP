@@ -903,15 +903,10 @@ void app_main(void) {
     // Splash screen removed: boot straight to the destination view (this mirrors
     // the routing the splash used to perform once boot work completed). Boot-time
     // work (SD/asset pack, plugin discovery) still runs on its own tasks.
-    View *startup_view;
-    if (!settings_get_setup_complete(&G_Settings)) {
-        startup_view = &setup_wizard_view;
-    } else if (settings_get_lockscreen_enabled(&G_Settings)) {
-        lockscreen_reset_input();
-        startup_view = &lockscreen_view;
-    } else {
-        startup_view = &scan_dashboard_view;   // appliance mode: auto-boot Live Scan
-    }
+    // Show the animated PhantomESP boot splash first; its fade-out routing
+    // switches to the correct destination (setup wizard / lockscreen /
+    // live-scan dashboard) once the animation completes.
+    View *startup_view = &splash_view;
 #ifdef CONFIG_BUILD_CONFIG_TEMPLATE
     if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "LilyGo T-Dongle-S3") == 0 ||
         strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "LilyGo T-Dongle-C5") == 0) {

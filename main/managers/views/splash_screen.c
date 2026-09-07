@@ -8,13 +8,13 @@
 #include "core/ghostesp_version.h"
 #include "gui/screen_layout.h"
 #include "gui/lvgl_safe.h"
+#include "phantom_splash.h"
 #include <stdio.h>
 #include <string.h>
 
-extern const lv_img_dsc_t ghostesplogo;
 
 #define SPLASH_MIN_HOLD_MS_REDUCED  50
-#define SPLASH_MIN_HOLD_MS_NORMAL   1000
+#define SPLASH_MIN_HOLD_MS_NORMAL   2200
 #define SPLASH_TIMEOUT_MS           8000
 #define SPLASH_PROGRESS_BAR_HEIGHT  8
 #define SPLASH_LABEL_MAX_LEN        32
@@ -22,12 +22,6 @@ extern const lv_img_dsc_t ghostesplogo;
 #define SPLASH_INDETERMINATE_PERIOD_MS 1200
 #define SPLASH_PROGRESS_BAR_WIDTH_PCT  60
 #define SPLASH_PROGRESS_BAR_MIN_WIDTH  80
-
-static lv_coord_t splash_progress_bar_width(void) {
-    lv_coord_t w = (lv_coord_t)((lv_disp_get_hor_res(NULL) * SPLASH_PROGRESS_BAR_WIDTH_PCT) / 100);
-    if (w < SPLASH_PROGRESS_BAR_MIN_WIDTH) w = SPLASH_PROGRESS_BAR_MIN_WIDTH;
-    return w;
-}
 
 lv_obj_t *splash_screen;
 lv_obj_t *img;
@@ -59,6 +53,34 @@ static uint32_t min_hold_ms(void);
 static uint32_t elapsed_ms(void);
 static void schedule_fade_check(void);
 
+/* --- Lightweight glitch-reveal wordmark (no big buffers; low-memory boards) --- */
+static lv_obj_t   *s_pe_label  = NULL;
+static lv_timer_t *s_pe_timer  = NULL;
+static uint8_t     s_pe_reveal = 0;
+static uint8_t     s_pe_tick   = 0;
+static uint32_t    s_pe_rng    = 0x50E7u;
+static const char  PE_TEXT[]   = "PhantomESP";
+static const char  PE_GLITCH[] = "#%&$@!*/<>?+=";
+
+static uint32_t pe_rand(void){ uint32_t x=s_pe_rng?s_pe_rng:0xA5F0u; x^=x<<13; x^=x>>17; x^=x<<5; s_pe_rng=x; return x; }
+
+static void pe_reveal_cb(lv_timer_t *t){
+    (void)t;
+    if(!s_pe_label){ if(s_pe_timer){ lv_timer_del(s_pe_timer); s_pe_timer=NULL; } return; }
+    const int n=(int)(sizeof(PE_TEXT)-1);
+    if(s_pe_reveal >= (uint8_t)n){
+        lv_label_set_text(s_pe_label, PE_TEXT);
+        if(s_pe_timer){ lv_timer_del(s_pe_timer); s_pe_timer=NULL; }
+        return;
+    }
+    char buf[24]; int k=0;
+    for(int i=0;i<(int)s_pe_reveal && k<20;i++) buf[k++]=PE_TEXT[i];
+    buf[k++]=PE_GLITCH[pe_rand()%(sizeof(PE_GLITCH)-1)];   /* flickering cursor */
+    buf[k]='\0';
+    lv_label_set_text(s_pe_label, buf);
+    if((++s_pe_tick)>=2){ s_pe_tick=0; s_pe_reveal++; }
+}
+
 static void splash_require_completion_apply(void *arg) {
     (void)arg;
     schedule_fade_check();
@@ -77,6 +99,12 @@ static uint32_t elapsed_ms(void) {
     return lv_tick_elaps(s_splash_start_ms);
 }
 
+static void phantom_splash_boot_done(void) {
+    /* Animated splash finished: mark done so the existing fade/routing runs. */
+    s_splash_done = true;
+    schedule_fade_check();
+}
+
 void splash_create(void) {
 
   s_completion_required = false;
@@ -86,104 +114,32 @@ void splash_create(void) {
   splash_screen = gui_screen_create_root_no_bg(NULL, NULL, lv_color_black(), LV_OPA_COVER);
   splash_view.root = splash_screen;
 
-  img = lv_img_create(splash_screen);
-
-  /* The 191x50 ghostesplogo is the real boot logo. On the smaller
-   * landscape boards the native size crowds the version + build
-   * labels and the progress bar, so scale it down with a per-display
-   * zoom. At zoom Z the rendered size is (191*Z/256) x (50*Z/256).
-   *
-   * TEmbedC1101 / TDisplayS3-Touch 320x170
-   *     zoom 192 (0.75x) -> 143x37, offset -30
-   *     logo y=37-74, version y=84-100, build y=102-118,
-   *     status y=126-142, bar y=146-154 (labels follow logo)
-   *
-   * Cardputer / cardputeradv 240x135
- *     zoom 128 (0.5x) -> 95x25, offset -30
- *     logo y=25-50, version pinned at y=52, build pinned at y=70,
- *     status y=93-107, bar y=111-119
- *
- * The Cardputer labels are placed with absolute y (LV_ALIGN_TOP_MID)
- * instead of relative to the logo so the cramped 135 px-tall screen
- * can pin the build name to a known good y regardless of where the
- * logo lands. Logo and labels sit in the upper half with ~21 px of
- * clear space between the build label and the status text. */
-  bool cardputer_layout = false;
-  if (LV_HOR_RES <= 240 && LV_VER_RES <= 135 && LV_VER_RES >= 100) {
-    lv_img_set_src(img, &ghostesplogo);
-    lv_img_set_size_mode(img, LV_IMG_SIZE_MODE_REAL);
-    lv_img_set_zoom(img, 128);
-    lv_obj_align(img, LV_ALIGN_CENTER, 0, -30);
-    cardputer_layout = true;
-  }
-  else if (LV_HOR_RES <= 320 && LV_VER_RES <= 170 && LV_VER_RES >= 130) {
-    lv_img_set_src(img, &ghostesplogo);
-    lv_img_set_size_mode(img, LV_IMG_SIZE_MODE_REAL);
-    lv_img_set_zoom(img, 192);
-    lv_obj_align(img, LV_ALIGN_CENTER, 0, -30);
-  }
-  else if (LV_VER_RES < 140 || LV_HOR_RES > 300) {
-    lv_img_set_src(img, &ghost);
-    lv_img_set_size_mode(img, LV_IMG_SIZE_MODE_REAL);
-    lv_img_set_zoom(img, 384);
-    lv_obj_align(img, LV_ALIGN_CENTER, 0, -20);
-  }
-  else {
-    lv_img_set_src(img, &ghostesplogo);
-    lv_obj_align(img, LV_ALIGN_CENTER, 0, -20);
-  }
-
-
-  lv_obj_t *label1 = lv_label_create(splash_screen);
-  lv_label_set_text(label1, GHOSTESP_VERSION);
-  lv_obj_set_style_text_color(label1, lv_color_hex(0xFFFFFF), 0);
-
-  lv_obj_t *label2 = lv_label_create(splash_screen);
-  const char *build_name = CONFIG_BUILD_CONFIG_TEMPLATE;
-  if (strcmp(CONFIG_BUILD_CONFIG_TEMPLATE, "somethingsomething") == 0) {
-    build_name = "The Banshee";
-  }
-  lv_label_set_text_fmt(label2, "%s", build_name);
-  lv_obj_set_style_text_color(label2, lv_color_hex(0xFFFFFF), 0);
-
-  if (cardputer_layout) {
-    lv_obj_align(label1, LV_ALIGN_TOP_MID, 0, 52);
-    lv_obj_align(label2, LV_ALIGN_TOP_MID, 0, 70);
-  }
-  else {
-    lv_obj_align_to(label1, img, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-    lv_obj_align_to(label2, label1, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
-  }
-
-  s_status_label = lv_label_create(splash_screen);
-  lv_obj_set_style_text_color(s_status_label, lv_color_hex(0xCCCCCC), 0);
-  lv_label_set_text(s_status_label, "Initializing...");
-  lv_obj_align(s_status_label, LV_ALIGN_BOTTOM_MID, 0, -28);
-
-  s_progress_bar_width = splash_progress_bar_width();
-  s_progress_bar = lv_obj_create(splash_screen);
-  lv_obj_set_size(s_progress_bar, s_progress_bar_width, SPLASH_PROGRESS_BAR_HEIGHT);
-  lv_obj_clear_flag(s_progress_bar, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_bg_color(s_progress_bar, lv_color_hex(0x222222), LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(s_progress_bar, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_radius(s_progress_bar, 4, LV_PART_MAIN);
-  lv_obj_set_style_border_width(s_progress_bar, 0, LV_PART_MAIN);
-  lv_obj_set_style_pad_all(s_progress_bar, 0, LV_PART_MAIN);
-  lv_obj_align(s_progress_bar, LV_ALIGN_BOTTOM_MID, 0, -16);
-
-  s_progress_fill = lv_obj_create(s_progress_bar);
-  lv_obj_set_size(s_progress_fill, 0, SPLASH_PROGRESS_BAR_HEIGHT);
-  lv_obj_set_pos(s_progress_fill, 0, 0);
-  lv_obj_clear_flag(s_progress_fill, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_bg_color(s_progress_fill, lv_color_hex(0x00AAFF), LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(s_progress_fill, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_radius(s_progress_fill, 4, LV_PART_MAIN);
-  lv_obj_set_style_border_width(s_progress_fill, 0, LV_PART_MAIN);
-  lv_obj_set_style_pad_all(s_progress_fill, 0, LV_PART_MAIN);
+  /* Progress-bar UI retired; the animated PhantomESP splash is the boot visual
+   * and drives the transition to the destination via phantom_splash_boot_done(). */
+  s_status_label = NULL;
+  s_progress_bar = NULL;
+  s_progress_fill = NULL;
 
   s_splash_start_ms = lv_tick_get();
   s_splash_done = false;
   s_progress_indet_running = false;
+
+  /* Animated sandstorm splash. It needs ~2x (width x band) RGB565 buffers and
+   * self-skips on low-memory (no-PSRAM) boards. When it skips, show a
+   * lightweight Rubik-Glitch "PhantomESP" wordmark instead, so every board still
+   * gets a branded boot screen. */
+  phantom_splash_start(splash_screen, phantom_splash_boot_done);
+  if (!phantom_splash_active()) {
+    s_pe_reveal = 0; s_pe_tick = 0; s_pe_rng ^= lv_tick_get();
+    s_pe_label = lv_label_create(splash_screen);
+    lv_label_set_text(s_pe_label, "");
+    lv_obj_set_style_text_font(s_pe_label, &rubik_glitch_28, 0);
+    lv_obj_set_style_text_color(s_pe_label, lv_color_hex(0x39FF14), 0);
+    lv_obj_center(s_pe_label);
+    lv_obj_fade_in(s_pe_label, 400, 0);
+    s_pe_timer = lv_timer_create(pe_reveal_cb, 60, NULL);
+  }
+
   schedule_fade_check();
 }
 
@@ -330,6 +286,9 @@ static void splash_completion_apply(void *arg) {
 }
 
 void splash_destroy(void) {
+    if (phantom_splash_active()) phantom_splash_stop();
+    if (s_pe_timer) { lv_timer_del(s_pe_timer); s_pe_timer = NULL; }
+    s_pe_label = NULL;
     stop_indeterminate_anim();
     if (s_fade_timer) {
         lv_timer_del(s_fade_timer);

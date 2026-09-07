@@ -4080,7 +4080,7 @@ static void create_nfc_emu_popup(const char *path, bool test_ndef) {
 
 #ifdef CONFIG_NFC_ST25R3916
     if (test_ndef) {
-        char *argv[] = {"nfc", "emulate", "ndef", "url", "https://ghostesp.net"};
+        char *argv[] = {"nfc", "emulate", "ndef", "url", "https://example.com"};
         handle_nfc_cmd(5, argv);
         nfc_emu_active = true;
         status_display_show_status("NFC Emulating");

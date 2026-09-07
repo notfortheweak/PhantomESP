@@ -1,4 +1,4 @@
-menu "Ghost ESP Options"
+menu "PhantomESP Options"
 
     menu "Device Details"
 

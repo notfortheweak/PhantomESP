@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-GhostESP (repo name PhantomESP) is an ESP-IDF firmware for ESP32-family chips: a wireless-research / security platform covering WiFi, BLE, NFC, IR, SubGHz, NRF24, Ethernet, GPS, USB HID, and 802.15.4/Zigbee, plus a full LVGL graphical UI, a native SD-app ecosystem, and a Lua scripting runtime. It is **ESP-IDF-native** (built directly on Espressif's SDK), not Arduino/PlatformIO. Toolchain: **ESP-IDF v6.0** (this is what CI builds against; `build.py`'s auto-download default of 5.5.1 is a fallback — target v6.0).
+PhantomESP (a counter-surveillance fork of GhostESP) is an ESP-IDF firmware for ESP32-family chips: a wireless-research / security platform covering WiFi, BLE, NFC, IR, SubGHz, NRF24, Ethernet, GPS, USB HID, and 802.15.4/Zigbee, plus a full LVGL graphical UI, a native SD-app ecosystem, and a Lua scripting runtime. It is **ESP-IDF-native** (built directly on Espressif's SDK), not Arduino/PlatformIO. Toolchain: **ESP-IDF v6.0** (this is what CI builds against; `build.py`'s auto-download default of 5.5.1 is a fallback — target v6.0).
 
 A single codebase compiles for **~46 board targets**. Board differences (pins, peripherals, features) are expressed entirely through Kconfig options baked into per-board `configs/sdkconfig.*` files — there is no per-board source directory. Code branches on `CONFIG_*` symbols and on `IDF_TARGET`.
 
