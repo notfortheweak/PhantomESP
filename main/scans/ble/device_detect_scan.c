@@ -218,6 +218,62 @@ static bool is_apple_proximity_pairing(const uint8_t *payload, size_t len) {
     return apple_msg_type(payload, len, &t) && t == 0x07;
 }
 
+// Walk the advertisement's AD structures for a "Service Data - 16-bit UUID"
+// field (AD type 0x16) whose UUID matches `uuid`. On match, hands back the
+// service-data bytes AFTER the 2-byte UUID via *out_data/*out_len. Structure-
+// aware like apple_msg_type() so a coincidental UUID-looking byte run inside
+// another field can't match. Non-Apple trackers all advertise this way.
+static bool find_service_data_uuid16(const uint8_t *payload, size_t len, uint16_t uuid,
+                                     const uint8_t **out_data, size_t *out_len) {
+    if (payload == NULL) return false;
+    size_t i = 0;
+    while (i < len) {
+        uint8_t ad_len = payload[i];
+        if (ad_len == 0) break;               // end of data / padding
+        if (i + 1 + ad_len > len) break;      // truncated AD structure
+        uint8_t ad_type = payload[i + 1];
+        const uint8_t *ad_data = &payload[i + 2];
+        size_t ad_data_len = (size_t)ad_len - 1;
+        if (ad_type == 0x16 && ad_data_len >= 2) {   // 0x16 = Service Data - 16-bit UUID
+            uint16_t u = (uint16_t)ad_data[0] | ((uint16_t)ad_data[1] << 8);  // little-endian
+            if (u == uuid) {
+                if (out_data) *out_data = ad_data + 2;
+                if (out_len)  *out_len  = ad_data_len - 2;
+                return true;
+            }
+        }
+        i += 1 + ad_len;                      // advance to next AD structure
+    }
+    return false;
+}
+
+// Samsung Galaxy SmartTag — advertises service data on Samsung's SmartTag UUIDs:
+// 0xFD59 when unregistered (setup/factory state) and 0xFD5A once registered and
+// participating in the offline-finding network. Both are SmartTag-specific;
+// Samsung phone continuity (Quick Share, etc.) uses manufacturer data (company
+// 0x0075) rather than these, so a phone won't be mislabelled as a tag.
+static bool is_samsung_smarttag(const uint8_t *payload, size_t len) {
+    return find_service_data_uuid16(payload, len, 0xFD5A, NULL, NULL) ||
+           find_service_data_uuid16(payload, len, 0xFD59, NULL, NULL);
+}
+
+// Tile tracker — advertises service data on Tile's assigned UUID 0xFEED.
+static bool is_tile_tracker(const uint8_t *payload, size_t len) {
+    return find_service_data_uuid16(payload, len, 0xFEED, NULL, NULL);
+}
+
+// Google Find My Device network tracker (Chipolo/Pebblebee/Google's own, etc.).
+// FMDN advertises service data on UUID 0xFEAA with a frame type of 0x40 (normal)
+// or 0x41 (unwanted-tracking-protection). 0xFEAA is shared with Eddystone, but
+// Eddystone uses frame types 0x00/0x10/0x20/0x30, so the frame-type byte cleanly
+// tells an FMDN tracker apart from an ordinary Eddystone beacon.
+static bool is_google_findmy(const uint8_t *payload, size_t len) {
+    const uint8_t *sd = NULL;
+    size_t sl = 0;
+    if (!find_service_data_uuid16(payload, len, 0xFEAA, &sd, &sl)) return false;
+    return sl >= 1 && (sd[0] == 0x40 || sd[0] == 0x41);
+}
+
 static bool is_suspicious_skimmer_name(const char *name) {
     if (name == NULL || name[0] == '\0') {
         return false;
@@ -242,6 +298,12 @@ const char *ble_device_detect_type_to_string(BLEDetectDeviceType type) {
         return "Flipper";
     case BLE_DETECT_DEVICE_SKIMMER:
         return "Skimmer Suspect";
+    case BLE_DETECT_DEVICE_SMARTTAG:
+        return "Samsung Tag";
+    case BLE_DETECT_DEVICE_TILE:
+        return "Tile";
+    case BLE_DETECT_DEVICE_FINDMY:
+        return "Find My Device";
     default:
         return "BLE Device";
     }
@@ -295,6 +357,12 @@ static void ble_device_detect_callback(struct ble_gap_event *event, size_t len) 
         detected_type = BLE_DETECT_DEVICE_AIRTAG;
     } else if (is_apple_proximity_pairing(event->disc.data, event->disc.length_data)) {
         detected_type = BLE_DETECT_DEVICE_APPLE;
+    } else if (is_samsung_smarttag(event->disc.data, event->disc.length_data)) {
+        detected_type = BLE_DETECT_DEVICE_SMARTTAG;
+    } else if (is_tile_tracker(event->disc.data, event->disc.length_data)) {
+        detected_type = BLE_DETECT_DEVICE_TILE;
+    } else if (is_google_findmy(event->disc.data, event->disc.length_data)) {
+        detected_type = BLE_DETECT_DEVICE_FINDMY;
     } else if (is_suspicious_skimmer_name(adv_name)) {
         detected_type = BLE_DETECT_DEVICE_SKIMMER;
         detected_subtype = "Name Match";
