@@ -91,19 +91,35 @@ void ap_scan_set_scan_band(int band) { s_scan_band = band; }
 // (UNII-1 36-48 + UNII-3 149-165) so a 5GHz/dual sweep fits the phase budget.
 static void ap_scan_apply_band_c5(wifi_scan_config_t *scan_config) {
     esp_wifi_set_country_code("US", true);
+    // Both 5GHz variants run 5G_ONLY; DFS just differs in scan type/channels below.
     wifi_band_mode_t mode = (s_scan_band == AP_SCAN_BAND_24) ? WIFI_BAND_MODE_2G_ONLY
-                          : (s_scan_band == AP_SCAN_BAND_5)  ? WIFI_BAND_MODE_5G_ONLY
+                          : (s_scan_band == AP_SCAN_BAND_5 ||
+                             s_scan_band == AP_SCAN_BAND_5_DFS) ? WIFI_BAND_MODE_5G_ONLY
                           : WIFI_BAND_MODE_AUTO;
     esp_wifi_set_band_mode(mode);
     esp_wifi_stop();
     esp_wifi_start();   // re-latch: session now comes up in the wanted band
-    if (s_scan_band != AP_SCAN_BAND_24) {
+    if (s_scan_band == AP_SCAN_BAND_5_DFS) {
+        // DFS channels (UNII-2A 52-64 + UNII-2C 100-144) forbid probe TX until a
+        // CAC clears them, so they can only be scanned PASSIVELY (listen for
+        // beacons). Trim the per-channel dwell so all 16 fit the scheduler's ~3s
+        // harvest window; 150ms > one beacon interval (~102ms) so we still catch
+        // each channel's beacon. Listen-only => no probe-request noise.
+        scan_config->scan_type = WIFI_SCAN_TYPE_PASSIVE;
+        scan_config->scan_time.passive = 150;
+        scan_config->channel_bitmap.ghz_5_channels =
+            WIFI_CHANNEL_52  | WIFI_CHANNEL_56  | WIFI_CHANNEL_60  | WIFI_CHANNEL_64  |
+            WIFI_CHANNEL_100 | WIFI_CHANNEL_104 | WIFI_CHANNEL_108 | WIFI_CHANNEL_112 |
+            WIFI_CHANNEL_116 | WIFI_CHANNEL_120 | WIFI_CHANNEL_124 | WIFI_CHANNEL_128 |
+            WIFI_CHANNEL_132 | WIFI_CHANNEL_136 | WIFI_CHANNEL_140 | WIFI_CHANNEL_144;
+    } else if (s_scan_band != AP_SCAN_BAND_24) {
         scan_config->channel_bitmap.ghz_5_channels =
             WIFI_CHANNEL_36 | WIFI_CHANNEL_40 | WIFI_CHANNEL_44 | WIFI_CHANNEL_48 |
             WIFI_CHANNEL_149 | WIFI_CHANNEL_153 | WIFI_CHANNEL_157 |
             WIFI_CHANNEL_161 | WIFI_CHANNEL_165;
     }
-    ESP_LOGI(TAG, "C5 scan band=%d (0=all,2=2.4,5=5G), band_mode set=%d", s_scan_band, (int)mode);
+    ESP_LOGI(TAG, "C5 scan band=%d (0=all,2=2.4,5=5G,6=5G-DFS), band_mode set=%d",
+             s_scan_band, (int)mode);
 }
 #else
 // Single-band targets have no band to select; keep the API callable (no-op) so

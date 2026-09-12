@@ -34,6 +34,11 @@ static const char *TAG = "scan_sched";
 #define SCAN_PHASE_DWELL_MS  2500
 #define SCAN_GAP_MS          300
 
+// C5 only: the 5GHz DFS pass is a slow (~2.4s) passive sweep, so run it every
+// Nth WiFi phase instead of every rotation to keep the drone/camera phases
+// responsive. 1 = every sweep; higher = rarer DFS coverage.
+#define SCAN_DFS_EVERY_N     2
+
 // Drones-tile focus mode: continuous WiFi-only hunt (see run_drone_focus).
 #define DRONE_FOCUS_HOP_MS     150   // fast hop -> full 14-channel sweep in ~2s
 #define DRONE_FOCUS_REFRESH_MS 700   // accumulator refresh cadence (no teardown)
@@ -105,9 +110,28 @@ static void run_phase(scan_category_id_t cat) {
             }
             ap_scan_finish_async();
         }
-        ap_scan_set_scan_band(AP_SCAN_BAND_ALL);  // restore default for interactive scans
         scan_report_accumulate_merge(SCAT_WIFI);  // 5GHz APs, don't stale the 2.4 ones
         GAP_DELAY();
+
+        // pass 3 (C5, periodic): passive listen across the 5GHz DFS channels
+        // (52-144), merged in. DFS can't be active-scanned and a 16-channel
+        // passive sweep is slow, so run it only every SCAN_DFS_EVERY_N WiFi phases
+        // to keep the drone/camera phases responsive. Passive => no probe noise.
+        static unsigned s_wifi_phase_count = 0;
+        if (s_run && (++s_wifi_phase_count % SCAN_DFS_EVERY_N) == 0) {
+            ap_scan_set_scan_band(AP_SCAN_BAND_5_DFS);
+            if (ap_scan_start_async() == ESP_OK) {
+                int waited = 0;
+                while (s_run && ap_scan_is_running() && waited < SCAN_WIFI_DWELL_MS) {
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    waited += 200;
+                }
+                ap_scan_finish_async();
+            }
+            scan_report_accumulate_merge(SCAT_WIFI);  // DFS APs, merge as well
+            GAP_DELAY();
+        }
+        ap_scan_set_scan_band(AP_SCAN_BAND_ALL);  // restore default for interactive scans
 #endif
         break;
     }

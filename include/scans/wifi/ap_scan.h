@@ -45,10 +45,16 @@ esp_err_t ap_scan_start_async(void);
 //   AP_SCAN_BAND_ALL (default) - 2.4 + 5GHz in one sweep (interactive/blocking
 //                                scanap, which runs to completion so it's fine)
 //   AP_SCAN_BAND_24            - 2.4GHz only (fast scheduler pass)
-//   AP_SCAN_BAND_5             - 5GHz only, common home channels (fast pass)
-#define AP_SCAN_BAND_ALL 0
-#define AP_SCAN_BAND_24  2
-#define AP_SCAN_BAND_5   5
+//   AP_SCAN_BAND_5             - 5GHz only, active-scannable home channels
+//                                (UNII-1 36-48 + UNII-3 149-165; fast pass)
+//   AP_SCAN_BAND_5_DFS         - 5GHz DFS channels only (52-144), PASSIVE listen:
+//                                DFS can't be active-scanned, so this pass just
+//                                listens for beacons (slow; scheduler runs it
+//                                periodically, not every sweep)
+#define AP_SCAN_BAND_ALL   0
+#define AP_SCAN_BAND_24    2
+#define AP_SCAN_BAND_5     5
+#define AP_SCAN_BAND_5_DFS 6
 void ap_scan_set_scan_band(int band);
 
 /**
