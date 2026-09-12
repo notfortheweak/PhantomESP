@@ -39,6 +39,18 @@ void ap_scan_start(void);
  */
 esp_err_t ap_scan_start_async(void);
 
+// Band selection for subsequent AP scans (dual-band C5 only; ignored on 2.4GHz-
+// only targets). A dual-band sweep can't finish inside the scheduler's per-phase
+// budget, so the scheduler scans the two bands as separate short passes:
+//   AP_SCAN_BAND_ALL (default) - 2.4 + 5GHz in one sweep (interactive/blocking
+//                                scanap, which runs to completion so it's fine)
+//   AP_SCAN_BAND_24            - 2.4GHz only (fast scheduler pass)
+//   AP_SCAN_BAND_5             - 5GHz only, common home channels (fast pass)
+#define AP_SCAN_BAND_ALL 0
+#define AP_SCAN_BAND_24  2
+#define AP_SCAN_BAND_5   5
+void ap_scan_set_scan_band(int band);
+
 /**
  * @brief Check if an AP scan is still running
  * 

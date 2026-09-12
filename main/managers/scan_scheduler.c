@@ -68,7 +68,12 @@ static void run_phase(scan_category_id_t cat) {
     s_current = (int)cat;
     switch (cat) {
     case SCAT_WIFI: {
-        // AP scan via the ap_scan module (feeds ap_scan_get_count / results).
+        // A dual-band scan can't finish inside one phase budget, so on the C5 we
+        // scan the two bands as separate short passes into the same Access Points
+        // store: 2.4GHz pass first (also feeds the station scan's AP list), then a
+        // 5GHz-only pass merged in. ap_scan_set_scan_band() is a no-op on 2.4GHz-
+        // only targets, so this path is band-agnostic.
+        ap_scan_set_scan_band(AP_SCAN_BAND_24);   // pass 1: 2.4GHz (fast)
         if (ap_scan_start_async() == ESP_OK) {
             int waited = 0;
             while (s_run && ap_scan_is_running() && waited < SCAN_WIFI_DWELL_MS) {
@@ -77,17 +82,33 @@ static void run_phase(scan_category_id_t cat) {
             }
             ap_scan_finish_async();
         }
+        scan_report_accumulate(SCAT_WIFI);       // access points (2.4; deactivates stale)
         GAP_DELAY();
         if (!s_run) return;
-        // Station scan (APs stay resident, so accumulate captures both). APs and
-        // stations are now separate categories/stores, so feed both from this one
-        // WiFi phase.
+        // Station scan uses the 2.4GHz AP list just captured (stations are on the
+        // AP's channel; the 5GHz pass below runs after so it doesn't replace it).
         wifi_manager_start_station_scan();
         PHASE_DELAY();
-        scan_report_accumulate(SCAT_WIFI);       // access points
         scan_report_accumulate(SCAT_STATIONS);   // client stations
         wifi_manager_stop_monitor_mode();
         GAP_DELAY();
+#ifdef CONFIG_IDF_TARGET_ESP32C5
+        if (!s_run) return;
+        // pass 2 (C5 dual-band only): 5GHz-only, merged into the same Access Points
+        // store (merge so it doesn't mark the 2.4GHz APs stale).
+        ap_scan_set_scan_band(AP_SCAN_BAND_5);
+        if (ap_scan_start_async() == ESP_OK) {
+            int waited = 0;
+            while (s_run && ap_scan_is_running() && waited < SCAN_WIFI_DWELL_MS) {
+                vTaskDelay(pdMS_TO_TICKS(200));
+                waited += 200;
+            }
+            ap_scan_finish_async();
+        }
+        ap_scan_set_scan_band(AP_SCAN_BAND_ALL);  // restore default for interactive scans
+        scan_report_accumulate_merge(SCAT_WIFI);  // 5GHz APs, don't stale the 2.4 ones
+        GAP_DELAY();
+#endif
         break;
     }
     case SCAT_PINEAP:

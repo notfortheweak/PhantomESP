@@ -370,14 +370,17 @@ static void notify_new_devices(scan_category_id_t id, int new_count, const char 
     toast_show(msg, type);
 }
 
-void scan_report_accumulate(scan_category_id_t id) {
+static void scan_report_accumulate_ex(scan_category_id_t id, bool deactivate_stale) {
     const scan_category_t *cat = scan_report_category(id);
     if (!cat || !cat->count || !cat->get) return;
     if (id < 0 || id >= SCAT_COUNT) return;
     if (!SEEN_LOCK()) return;
     if (!s_seen) { SEEN_UNLOCK(); return; }
 
-    for (int j = 0; j < s_seen_n[id]; j++) SEEN_AT(id, j).active = false;
+    // deactivate_stale=false (merge): keep existing entries' active state, so a
+    // second source folded into this category doesn't mark the first source stale.
+    if (deactivate_stale)
+        for (int j = 0; j < s_seen_n[id]; j++) SEEN_AT(id, j).active = false;
 
     int new_count = 0;
     char last_new_title[sizeof(((seen_t *)0)->title)] = {0};
@@ -421,6 +424,14 @@ void scan_report_accumulate(scan_category_id_t id) {
     SEEN_UNLOCK();
 
     notify_new_devices(id, new_count, last_new_title);
+}
+
+void scan_report_accumulate(scan_category_id_t id) {
+    scan_report_accumulate_ex(id, true);
+}
+
+void scan_report_accumulate_merge(scan_category_id_t id) {
+    scan_report_accumulate_ex(id, false);
 }
 
 int scan_report_total_count(scan_category_id_t id) {

@@ -79,6 +79,38 @@ static bool async_scan_in_progress = false;
 static int64_t async_scan_start_time = 0;
 static bool scan_results_truncated = false;
 
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+// Which band(s) the next scan covers (see ap_scan_set_scan_band / AP_SCAN_BAND_*).
+static int s_scan_band = AP_SCAN_BAND_ALL;
+void ap_scan_set_scan_band(int band) { s_scan_band = band; }
+
+// Configure the dual-band scan for the current s_scan_band and (re)start WiFi so
+// the band selection latches at esp_wifi_start() -- setting band mode AFTER start
+// does NOT change the running session, so the scan must start in the wanted band.
+// Also limits the 5GHz portion to the common active-scannable home channels
+// (UNII-1 36-48 + UNII-3 149-165) so a 5GHz/dual sweep fits the phase budget.
+static void ap_scan_apply_band_c5(wifi_scan_config_t *scan_config) {
+    esp_wifi_set_country_code("US", true);
+    wifi_band_mode_t mode = (s_scan_band == AP_SCAN_BAND_24) ? WIFI_BAND_MODE_2G_ONLY
+                          : (s_scan_band == AP_SCAN_BAND_5)  ? WIFI_BAND_MODE_5G_ONLY
+                          : WIFI_BAND_MODE_AUTO;
+    esp_wifi_set_band_mode(mode);
+    esp_wifi_stop();
+    esp_wifi_start();   // re-latch: session now comes up in the wanted band
+    if (s_scan_band != AP_SCAN_BAND_24) {
+        scan_config->channel_bitmap.ghz_5_channels =
+            WIFI_CHANNEL_36 | WIFI_CHANNEL_40 | WIFI_CHANNEL_44 | WIFI_CHANNEL_48 |
+            WIFI_CHANNEL_149 | WIFI_CHANNEL_153 | WIFI_CHANNEL_157 |
+            WIFI_CHANNEL_161 | WIFI_CHANNEL_165;
+    }
+    ESP_LOGI(TAG, "C5 scan band=%d (0=all,2=2.4,5=5G), band_mode set=%d", s_scan_band, (int)mode);
+}
+#else
+// Single-band targets have no band to select; keep the API callable (no-op) so
+// the scheduler needn't guard its two-pass calls per target.
+void ap_scan_set_scan_band(int band) { (void)band; }
+#endif
+
 // Forward declarations
 static void sanitize_ssid_and_check_hidden(const uint8_t* input_ssid, char* output_buffer, size_t buffer_size);
 static void print_ap_entry_formatted(uint16_t idx, const wifi_ap_record_t *rec, bool include_security);
@@ -283,6 +315,9 @@ void ap_scan_start(void) {
     TERMINAL_VIEW_ADD_TEXT("Please wait 5 Seconds...\n");
 #endif
 
+#ifdef CONFIG_IDF_TARGET_ESP32C5
+    ap_scan_apply_band_c5(&scan_config);
+#else
     // Scan the full 2.4GHz band (ch 1-14). channel=0 sweeps every channel the
     // country permits, so set a permissive country first (US/others otherwise cap
     // the sweep at 11/13). Passive scan RX only, not transmitting.
@@ -291,6 +326,7 @@ void ap_scan_start(void) {
                                        .policy = WIFI_COUNTRY_POLICY_MANUAL };
         esp_wifi_set_country(&scan_country);
     }
+#endif
     err = esp_wifi_scan_start(&scan_config, true);
 
     if (err != ESP_OK) {
@@ -392,6 +428,9 @@ esp_err_t ap_scan_start_async(void) {
     TERMINAL_VIEW_ADD_TEXT("Please wait 5 Seconds...\n");
 #endif
 
+#ifdef CONFIG_IDF_TARGET_ESP32C5
+    ap_scan_apply_band_c5(&scan_config);
+#else
     // Full 2.4GHz band (ch 1-14): permissive country so channel=0 sweeps all of
     // it regardless of the configured region. Passive scan RX only.
     {
@@ -399,6 +438,7 @@ esp_err_t ap_scan_start_async(void) {
                                        .policy = WIFI_COUNTRY_POLICY_MANUAL };
         esp_wifi_set_country(&scan_country);
     }
+#endif
     err = esp_wifi_scan_start(&scan_config, false);
     if (err == ESP_ERR_WIFI_STATE) {
         ESP_LOGW(TAG, "STA busy, forcing disconnect before scan retry");
@@ -514,6 +554,16 @@ void ap_scan_finish_async(void) {
         }
 
         ap_count = actual_ap_count;
+
+#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
+        // Dual-band summary: how many of the found APs are on 5GHz (channel > 14).
+        int aps_5ghz = 0;
+        for (uint16_t i = 0; i < ap_count; i++) {
+            if (scanned_aps[i].primary > 14) aps_5ghz++;
+        }
+        printf("  (%d on 5GHz)\n", aps_5ghz);
+        TERMINAL_VIEW_ADD_TEXT("  (%d on 5GHz)\n", aps_5ghz);
+#endif
     } else {
         printf("No access points found\n");
         ap_count = 0;
@@ -605,6 +655,16 @@ void ap_scan_stop(void) {
         }
 
         ap_count = actual_ap_count;
+
+#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
+        // Dual-band summary: how many of the found APs are on 5GHz (channel > 14).
+        int aps_5ghz = 0;
+        for (uint16_t i = 0; i < ap_count; i++) {
+            if (scanned_aps[i].primary > 14) aps_5ghz++;
+        }
+        printf("  (%d on 5GHz)\n", aps_5ghz);
+        TERMINAL_VIEW_ADD_TEXT("  (%d on 5GHz)\n", aps_5ghz);
+#endif
     } else {
         printf("No access points found\n");
         ap_count = 0;

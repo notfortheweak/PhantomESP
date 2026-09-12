@@ -57,6 +57,12 @@ const scan_category_t *scan_report_category(scan_category_id_t id);
 // engine frees its data). Marks currently-seen signals active, remembers new
 // ones as part of the running session total.
 void scan_report_accumulate(scan_category_id_t id);
+// Like scan_report_accumulate() but does NOT first mark existing entries stale --
+// it only adds/refreshes the signals currently reported, leaving others' active
+// state untouched. Used to fold a second source into one category without the
+// first source's entries flipping inactive (e.g. the C5 5GHz WiFi pass merging
+// into the same Access Points store the 2.4GHz pass just populated).
+void scan_report_accumulate_merge(scan_category_id_t id);
 void scan_report_reset_session(void);          // forget everything (new session)
 
 // The session table is heap-backed and lives only while Live Scan is open --
