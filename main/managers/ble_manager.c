@@ -747,6 +747,14 @@ static bool wait_for_ble_ready(void) {
     return true;
 }
 
+// Passive (listen-only) vs active BLE discovery. Passive never sends SCAN_REQ,
+// so the device doesn't announce itself while scanning. It still receives every
+// advertisement (AirTags, SmartTag/Tile/Google trackers, drone BLE), losing only
+// the SCAN_RSP payload (sometimes a device name). The background scheduler flips
+// this on around its BLE-family phases; interactive tools (blescan) stay active.
+static bool s_ble_passive = false;
+void ble_set_scan_passive(bool passive) { s_ble_passive = passive; }
+
 bool ble_start_scanning(void) {
     if (!ble_initialized) {
         ble_init();
@@ -778,6 +786,7 @@ bool ble_start_scanning(void) {
     disc_params.itvl = BLE_HCI_SCAN_ITVL_DEF;
     disc_params.window = BLE_HCI_SCAN_WINDOW_DEF;
     disc_params.filter_duplicates = 0;
+    disc_params.passive = s_ble_passive ? 1 : 0;  // stealth: no SCAN_REQ when passive
 
     // Infer the correct own address type (Public or Random)
     uint8_t own_addr_type;

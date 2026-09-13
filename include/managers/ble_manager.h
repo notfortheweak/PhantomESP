@@ -53,6 +53,9 @@ void ble_start_blespam_detector(void);
 void ble_start_capture(void);
 void ble_start_capture_wireshark(void);
 bool ble_start_scanning(void);
+// Passive (listen-only, no SCAN_REQ) vs active BLE discovery for subsequent
+// scans. Default active (false); the background scheduler enables it for stealth.
+void ble_set_scan_passive(bool passive);
 void ble_start_skimmer_detection(void);
 void ble_stop_skimmer_detection(void);
 

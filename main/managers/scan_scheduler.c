@@ -78,6 +78,10 @@ static void run_phase(scan_category_id_t cat) {
         // store: 2.4GHz pass first (also feeds the station scan's AP list), then a
         // 5GHz-only pass merged in. ap_scan_set_scan_band() is a no-op on 2.4GHz-
         // only targets, so this path is band-agnostic.
+        // Stealth: the background sweep listens only (no probe requests, no
+        // directed hidden-AP probes) so the counter-surveillance device stays
+        // undetectable. Restored to active before break for interactive scanap.
+        ap_scan_set_passive(true);
         ap_scan_set_scan_band(AP_SCAN_BAND_24);   // pass 1: 2.4GHz (fast)
         if (ap_scan_start_async() == ESP_OK) {
             int waited = 0;
@@ -133,6 +137,7 @@ static void run_phase(scan_category_id_t cat) {
         }
         ap_scan_set_scan_band(AP_SCAN_BAND_ALL);  // restore default for interactive scans
 #endif
+        ap_scan_set_passive(false);  // restore active for interactive scanap
         break;
     }
     case SCAT_PINEAP:
@@ -162,25 +167,34 @@ static void run_phase(scan_category_id_t cat) {
         GAP_DELAY();
         break;
 #ifndef CONFIG_IDF_TARGET_ESP32S2
+    // Stealth: the scheduler's BLE-family phases discover passively (no SCAN_REQ);
+    // advertisements still arrive so trackers/flippers are still seen. Each phase
+    // restores active afterwards so an interactive BLE tool isn't left passive.
     case SCAT_FLIPPERS:
+        ble_set_scan_passive(true);
         flipper_scan_start();
         PHASE_DELAY();
         accumulate_ble(SCAT_FLIPPERS);
         flipper_scan_stop();
+        ble_set_scan_passive(false);
         GAP_DELAY();
         break;
     case SCAT_AIRTAGS:
+        ble_set_scan_passive(true);
         airtag_scan_start();
         PHASE_DELAY();
         accumulate_ble(SCAT_AIRTAGS);
         airtag_scan_stop();
+        ble_set_scan_passive(false);
         GAP_DELAY();
         break;
     case SCAT_BLE:
+        ble_set_scan_passive(true);
         ble_device_detect_start();
         PHASE_DELAY();
         accumulate_ble(SCAT_BLE);
         ble_device_detect_stop();
+        ble_set_scan_passive(false);
         GAP_DELAY();
         break;
 #endif

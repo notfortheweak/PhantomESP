@@ -57,6 +57,13 @@ esp_err_t ap_scan_start_async(void);
 #define AP_SCAN_BAND_5_DFS 6
 void ap_scan_set_scan_band(int band);
 
+// Passive (listen-only) vs active AP scanning for subsequent scans (all targets).
+// The background scheduler enables this so its sweeps emit nothing (no probe
+// requests / no directed probes for hidden APs) -- the device stays undetectable
+// while still seeing every beaconing AP. Interactive scans leave it off (active).
+// Default: active (false).
+void ap_scan_set_passive(bool passive);
+
 /**
  * @brief Check if an AP scan is still running
  * 

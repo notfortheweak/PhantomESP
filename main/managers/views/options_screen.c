@@ -1418,6 +1418,7 @@ static SettingsItem settings_items[] = {
     {"Web Auth", SETTING_WEB_AUTH, bool_options, 2, 1, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_TOGGLE},
     {"AP Enabled", SETTING_AP_ENABLED, bool_options, 2, 1, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_TOGGLE},
     {"Background Threat Alerts", SETTING_BG_THREAT_ALERTS, bool_options, 2, 1, SETTINGS_CAT_SCAN_SAVING, false, NULL, SETTING_WIDGET_TOGGLE},
+    {"Log Detections to SD", SETTING_DETECTION_LOG, bool_options, 2, 1, SETTINGS_CAT_SCAN_SAVING, false, NULL, SETTING_WIDGET_TOGGLE},
     {"WebUI AP Only", SETTING_WEBUI_AP_ONLY, bool_options, 2, 1, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_TOGGLE},
     {"AP SSID", SETTING_AP_SSID, action_options, 1, 0, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"AP Password", SETTING_AP_PASSWORD, action_options, 1, 0, SETTINGS_CAT_NETWORK, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
@@ -3018,6 +3019,9 @@ static void load_current_settings_values(void) {
             case SETTING_BG_THREAT_ALERTS:
                 settings_items[i].current_value = settings_get_bg_threat_alerts_enabled(&G_Settings) ? 1 : 0;
                 break;
+            case SETTING_DETECTION_LOG:
+                settings_items[i].current_value = settings_get_detection_log_enabled(&G_Settings) ? 1 : 0;
+                break;
             case SETTING_POWER_SAVE:
                 settings_items[i].current_value = settings_get_power_save_enabled(&G_Settings) ? 1 : 0;
                 break;
@@ -3332,6 +3336,9 @@ static void apply_setting_change(int setting_index, int new_value) {
                 scan_scheduler_stop();
                 scan_report_free();
             }
+            break;
+        case SETTING_DETECTION_LOG:
+            settings_set_detection_log_enabled(&G_Settings, new_value == 1);
             break;
         case SETTING_POWER_SAVE:
             settings_set_power_save_enabled(&G_Settings, new_value == 1);

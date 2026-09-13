@@ -98,6 +98,8 @@ static const SettingDescriptor k_settings_desc[] = {
     {"rts_enabled", ST_BOOL, OFF(rts_enabled), "System", 0, 0, 0},
     {"third_ctrl", ST_BOOL, OFF(third_control_enabled), "System", 0, 0, 0},
     {"auto_save_scans", ST_BOOL, OFF(auto_save_scans), "System", 0, 0, 0},
+    {"bg_threat_alerts", ST_BOOL, OFF(bg_threat_alerts_enabled), "Scan", 0, 0, 0},
+    {"detection_log", ST_BOOL, OFF(detection_log_enabled), "Scan", 0, 0, 0},
 
     {"flappy_name", ST_STRING, OFF(flappy_ghost_name), "Custom", 65, 0, 0},
     {"timezone", ST_STRING, OFF(selected_timezone), "Custom", 25, 0, 0},

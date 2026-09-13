@@ -128,7 +128,14 @@ void splash_create(void) {
    * self-skips on low-memory (no-PSRAM) boards. When it skips, show a
    * lightweight Rubik-Glitch "PhantomESP" wordmark instead, so every board still
    * gets a branded boot screen. */
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+  /* Single-core C5 (e.g. NerdMiner CYD): the software-rendered sandstorm rewrites
+   * and re-flushes the whole band every frame while heavy boot work runs on the
+   * one core, so it visibly stutters. Skip it and use the cheap wordmark reveal
+   * below (routing is driven by boot-completion signals, not the animation). */
+#else
   phantom_splash_start(splash_screen, phantom_splash_boot_done);
+#endif
   if (!phantom_splash_active()) {
     s_pe_reveal = 0; s_pe_tick = 0; s_pe_rng ^= lv_tick_get();
     s_pe_label = lv_label_create(splash_screen);
@@ -195,9 +202,11 @@ static void fade_out_cb(void *var) {
     lockscreen_reset_input();
     display_manager_switch_view(&lockscreen_view);
   } else {
-    // Auto-boot into the live scan dashboard (appliance mode); the menu is one
-    // input away via the dashboard's exit handler.
-    display_manager_switch_view(&scan_dashboard_view);
+    // Boot into the main menu so the operator chooses their tool (Live Scan,
+    // Detect, etc.) rather than dropping straight into a scanning screen. The
+    // background scheduler still auto-runs headless if Background Threat Alerts
+    // is enabled (see main.c app_main tail); it is not started here.
+    display_manager_switch_view(&main_menu_view);
   }
 }
 

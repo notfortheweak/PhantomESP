@@ -127,6 +127,26 @@ static void ap_scan_apply_band_c5(wifi_scan_config_t *scan_config) {
 void ap_scan_set_scan_band(int band) { (void)band; }
 #endif
 
+// Passive vs active scan selection (ALL targets). The background scheduler flips
+// this on for its sweeps so the device transmits nothing: no probe requests and
+// no directed probes for hidden APs. Detection is unaffected -- APs, cameras and
+// rogue APs all beacon, so a passive listen still sees them; only a hidden AP's
+// SSID *name* is unavailable passively. Interactive tools (blocking scanap) leave
+// it off and stay active.
+static bool s_scan_passive = false;
+void ap_scan_set_passive(bool passive) { s_scan_passive = passive; }
+
+// Force a scan config passive when s_scan_passive is set; otherwise leave it as
+// the band/country logic chose (active by default, or the DFS pass's own passive
+// set by ap_scan_apply_band_c5). ~150ms/channel spans a beacon interval (~102ms)
+// and keeps a full 14ch/5G sweep inside the scheduler's ~3s harvest budget.
+static void ap_scan_apply_passive(wifi_scan_config_t *cfg) {
+    if (!s_scan_passive) return;
+    cfg->scan_type = WIFI_SCAN_TYPE_PASSIVE;
+    cfg->show_hidden = false;
+    cfg->scan_time.passive = 150;
+}
+
 // Forward declarations
 static void sanitize_ssid_and_check_hidden(const uint8_t* input_ssid, char* output_buffer, size_t buffer_size);
 static void print_ap_entry_formatted(uint16_t idx, const wifi_ap_record_t *rec, bool include_security);
@@ -336,13 +356,15 @@ void ap_scan_start(void) {
 #else
     // Scan the full 2.4GHz band (ch 1-14). channel=0 sweeps every channel the
     // country permits, so set a permissive country first (US/others otherwise cap
-    // the sweep at 11/13). Passive scan RX only, not transmitting.
+    // the sweep at 11/13). Active scan by default (this blocking path is the
+    // interactive scanap); ap_scan_apply_passive below honors a passive request.
     {
         wifi_country_t scan_country = { .cc = "JP", .schan = 1, .nchan = 14,
                                        .policy = WIFI_COUNTRY_POLICY_MANUAL };
         esp_wifi_set_country(&scan_country);
     }
 #endif
+    ap_scan_apply_passive(&scan_config);
     err = esp_wifi_scan_start(&scan_config, true);
 
     if (err != ESP_OK) {
@@ -448,13 +470,15 @@ esp_err_t ap_scan_start_async(void) {
     ap_scan_apply_band_c5(&scan_config);
 #else
     // Full 2.4GHz band (ch 1-14): permissive country so channel=0 sweeps all of
-    // it regardless of the configured region. Passive scan RX only.
+    // it regardless of the configured region. (Active by default; the scheduler
+    // may force passive via ap_scan_set_passive -> ap_scan_apply_passive below.)
     {
         wifi_country_t scan_country = { .cc = "JP", .schan = 1, .nchan = 14,
                                        .policy = WIFI_COUNTRY_POLICY_MANUAL };
         esp_wifi_set_country(&scan_country);
     }
 #endif
+    ap_scan_apply_passive(&scan_config);
     err = esp_wifi_scan_start(&scan_config, false);
     if (err == ESP_ERR_WIFI_STATE) {
         ESP_LOGW(TAG, "STA busy, forcing disconnect before scan retry");

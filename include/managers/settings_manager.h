@@ -92,6 +92,7 @@ typedef enum {
     SETTING_MENU_LAYOUT,
     SETTING_AUTO_SAVE_SCANS,
     SETTING_BG_THREAT_ALERTS,
+    SETTING_DETECTION_LOG,
 #ifdef CONFIG_WITH_STATUS_DISPLAY
     SETTING_IDLE_ANIMATION,
     SETTING_IDLE_ANIM_DELAY,
@@ -272,6 +273,7 @@ typedef struct {
   // WiFi/BLE attack screen's own radio init/deinit, so leaving it on while
   // running an attack tool is unverified.
   bool bg_threat_alerts_enabled;
+  bool detection_log_enabled; // append new detections to /mnt/ghostesp/detections.csv
   bool zebra_menus_enabled;
   uint8_t max_screen_brightness; // Max screen brightness (0-100)
 
@@ -477,6 +479,8 @@ void settings_set_ap_enabled(FSettings *settings, bool enabled);
 bool settings_get_ap_enabled(const FSettings *settings);
 void settings_set_bg_threat_alerts_enabled(FSettings *settings, bool enabled);
 bool settings_get_bg_threat_alerts_enabled(const FSettings *settings);
+void settings_set_detection_log_enabled(FSettings *settings, bool enabled);
+bool settings_get_detection_log_enabled(const FSettings *settings);
 
 // Getter and Setter for power save enabled state
 bool settings_get_power_save_enabled(const FSettings *settings);

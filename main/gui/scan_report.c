@@ -24,6 +24,14 @@
 #include "scans/wifi/ap_scan.h"
 #include "scans/wifi/station_scan.h"
 
+// Detection log (SD + GPS) and its opt-in setting are used on every target, so
+// these headers must sit OUTSIDE the S2/BLE guard below.
+#include "managers/settings_manager.h"            // detection-log opt-in + G_Settings
+#include "managers/sd_card_manager.h"             // sd_card_append_file / sd_card_exists
+#include "managers/gps_manager.h"                 // GPS stamp for logged detections
+#include "esp_timer.h"
+#include <time.h>
+
 #ifndef CONFIG_IDF_TARGET_ESP32S2
 #include "scans/ble/flipper_scan.h"
 #include "scans/ble/airtag_scan.h"
@@ -189,22 +197,57 @@ static bool flipper_get(int i, scan_sig_t *o) {
     return true;
 }
 
-// ---- Apple AirTags ----
-static int airtag_count(void) { return airtag_scan_get_count(); }
-static bool airtag_get(int i, scan_sig_t *o) {
-    uint8_t mac[6]; int8_t r = 0;
-    if (airtag_scan_get_device_data(i, mac, &r) != 0) return false;
-    set_mac(o->title, sizeof(o->title), mac);
-    set_mac(o->addr, sizeof(o->addr), mac);
-    snprintf(o->sub, sizeof(o->sub), "AirTag");
-    o->rssi = r; o->has_rssi = true; o->kind = SKIND_DEFAULT;
-    return true;
+// ---- Trackers ----
+// One "Trackers" tile answers "is something following me?" by unifying every
+// personal-tracker type: Apple AirTags (from the dedicated airtag_scan) plus the
+// Samsung SmartTag / Tile / Google Find My trackers classified by device_detect.
+static bool ble_is_tracker_type(BLEDetectDeviceType t) {
+    return t == BLE_DETECT_DEVICE_SMARTTAG ||
+           t == BLE_DETECT_DEVICE_TILE ||
+           t == BLE_DETECT_DEVICE_FINDMY;
+}
+static int tracker_dd_count(void) {  // non-Apple trackers seen by device_detect
+    int total = ble_device_detect_get_count(), c = 0;
+    for (int i = 0; i < total; i++) {
+        BLEDetectDeviceInfo info;
+        if (ble_device_detect_get_device(i, &info) == 0 && ble_is_tracker_type(info.type)) c++;
+    }
+    return c;
+}
+static int tracker_count(void) { return airtag_scan_get_count() + tracker_dd_count(); }
+static bool tracker_get(int idx, scan_sig_t *o) {
+    // Stable order: Apple AirTags (airtag_scan) first, then device_detect trackers.
+    int a = airtag_scan_get_count();
+    if (idx < a) {
+        uint8_t mac[6]; int8_t r = 0;
+        if (airtag_scan_get_device_data(idx, mac, &r) != 0) return false;
+        set_mac(o->title, sizeof(o->title), mac);
+        set_mac(o->addr, sizeof(o->addr), mac);
+        snprintf(o->sub, sizeof(o->sub), "AirTag");
+        o->rssi = r; o->has_rssi = true; o->kind = SKIND_DEFAULT;
+        return true;
+    }
+    int want = idx - a, c = 0, total = ble_device_detect_get_count();
+    for (int i = 0; i < total; i++) {
+        BLEDetectDeviceInfo info;
+        if (ble_device_detect_get_device(i, &info) != 0) continue;
+        if (!ble_is_tracker_type(info.type)) continue;
+        if (c++ != want) continue;
+        const char *type = ble_device_detect_type_to_string(info.type);
+        snprintf(o->title, sizeof(o->title), "%s", info.name[0] ? info.name : type);
+        set_mac(o->addr, sizeof(o->addr), info.mac);
+        snprintf(o->sub, sizeof(o->sub), "%s", type);
+        o->rssi = info.rssi; o->has_rssi = true; o->kind = SKIND_DEFAULT;
+        return true;
+    }
+    return false;
 }
 
-// ---- BLE (excludes Flippers/AirTags — they have their own tiles) ----
+// ---- BLE (excludes Flippers + every tracker type — they have their own tiles) ----
 static bool ble_is_excluded(const BLEDetectDeviceInfo *info) {
     return info->type == BLE_DETECT_DEVICE_AIRTAG ||
-           info->type == BLE_DETECT_DEVICE_FLIPPER;
+           info->type == BLE_DETECT_DEVICE_FLIPPER ||
+           ble_is_tracker_type(info->type);
 }
 static int ble_count(void) {
     int total = ble_device_detect_get_count(), c = 0;
@@ -240,11 +283,11 @@ static const scan_category_t s_categories[SCAT_COUNT] = {
     [SCAT_PINEAP]   = { "PineAP",   pineap_count, pineap_get },
 #ifndef CONFIG_IDF_TARGET_ESP32S2
     [SCAT_FLIPPERS] = { "Flippers", flipper_count,flipper_get },
-    [SCAT_AIRTAGS]  = { "AirTags",  airtag_count, airtag_get },
+    [SCAT_AIRTAGS]  = { "Trackers", tracker_count, tracker_get },
     [SCAT_BLE]      = { "BLE",      ble_count,    ble_get },
 #else
     [SCAT_FLIPPERS] = { "Flippers", NULL, NULL },
-    [SCAT_AIRTAGS]  = { "AirTags",  NULL, NULL },
+    [SCAT_AIRTAGS]  = { "Trackers", NULL, NULL },
     [SCAT_BLE]      = { "BLE",      NULL, NULL },
 #endif
 };
@@ -353,7 +396,7 @@ static void notify_new_devices(scan_category_id_t id, int new_count, const char 
     case SCAT_CAMERAS:  one = "camera";     many = "cameras";     break;
     case SCAT_PINEAP:   one = "rogue AP";   many = "rogue APs";   break;
     case SCAT_FLIPPERS: one = "Flipper";    many = "Flippers";    break;
-    case SCAT_AIRTAGS:  one = "AirTag";     many = "AirTags";     break;
+    case SCAT_AIRTAGS:  one = "tracker";    many = "trackers";    break;
     case SCAT_BLE:      one = "BLE device"; many = "BLE devices"; break;
     default: break;
     }
@@ -370,6 +413,67 @@ static void notify_new_devices(scan_category_id_t id, int new_count, const char 
     toast_show(msg, type);
 }
 
+// ---- SD detection log (opt-in via SETTING_DETECTION_LOG) --------------------
+// A counter-surveillance sweep should leave a reviewable record, not just live
+// tiles. When enabled and an SD card is mounted, each newly-seen device is
+// appended to a CSV with a timestamp and (when a fix exists) GPS coordinates.
+#define DET_LOG_PATH  SD_GHOSTESP_ROOT "/detections.csv"
+#define DET_LOG_BATCH 12   // max new devices logged per accumulate pass
+
+static scan_sig_t s_det_log_buf[DET_LOG_BATCH];  // scratch; scheduler task only
+
+// Replace CSV-hostile characters so an SSID/name can't break a row.
+static void det_csv_sanitize(const char *in, char *out, size_t out_sz) {
+    size_t j = 0;
+    for (size_t i = 0; in && in[i] && j + 1 < out_sz; i++) {
+        char c = in[i];
+        out[j++] = (c == ',' || c == '\n' || c == '\r' || c == '"') ? ' ' : c;
+    }
+    out[j] = '\0';
+}
+
+// Append the pass's new devices to the SD log. MUST run after SEEN_UNLOCK -- SD
+// I/O is slow and must not hold the accumulator mutex. Only the scheduler task
+// calls this (via accumulate), so the static scratch buffer is safe.
+static void detection_log_flush(scan_category_id_t id, const scan_sig_t *sigs, int n) {
+    if (n <= 0 || !sd_card_manager.is_initialized) return;
+    const scan_category_t *cat = scan_report_category(id);
+    const char *catname = (cat && cat->name) ? cat->name : "?";
+
+    // Real UTC when the clock is set (GPS/SNTP), else uptime seconds since boot.
+    char ts[24];
+    time_t now = time(NULL);
+    if (now > (time_t)1600000000) {
+        struct tm t; gmtime_r(&now, &t);
+        strftime(ts, sizeof ts, "%Y-%m-%dT%H:%M:%SZ", &t);
+    } else {
+        snprintf(ts, sizeof ts, "%llu",
+                 (unsigned long long)(esp_timer_get_time() / 1000000ULL));
+    }
+
+    gps_t gps; bool peer;
+    bool have_gps = gps_manager_get_recent_active_gps_snapshot(&gps, &peer) && gps.valid;
+
+    if (!sd_card_exists(DET_LOG_PATH)) {
+        static const char hdr[] = "timestamp,category,type,identifier,mac,rssi,lat,lon\n";
+        sd_card_append_file(DET_LOG_PATH, hdr, sizeof(hdr) - 1);
+    }
+
+    for (int i = 0; i < n; i++) {
+        char type[40], ident[40], line[224];
+        det_csv_sanitize(sigs[i].sub, type, sizeof type);
+        det_csv_sanitize(sigs[i].title, ident, sizeof ident);
+        int rssi = sigs[i].has_rssi ? sigs[i].rssi : 0;
+        int len = have_gps
+            ? snprintf(line, sizeof line, "%s,%s,%s,%s,%s,%d,%.6f,%.6f\n",
+                       ts, catname, type, ident, sigs[i].addr, rssi,
+                       (double)gps.latitude, (double)gps.longitude)
+            : snprintf(line, sizeof line, "%s,%s,%s,%s,%s,%d,,\n",
+                       ts, catname, type, ident, sigs[i].addr, rssi);
+        if (len > 0) sd_card_append_file(DET_LOG_PATH, line, (size_t)len);
+    }
+}
+
 static void scan_report_accumulate_ex(scan_category_id_t id, bool deactivate_stale) {
     const scan_category_t *cat = scan_report_category(id);
     if (!cat || !cat->count || !cat->get) return;
@@ -384,6 +488,11 @@ static void scan_report_accumulate_ex(scan_category_id_t id, bool deactivate_sta
 
     int new_count = 0;
     char last_new_title[sizeof(((seen_t *)0)->title)] = {0};
+
+    // Buffer this pass's new devices for the SD log (flushed after the lock).
+    bool det_log = settings_get_detection_log_enabled(&G_Settings) &&
+                   sd_card_manager.is_initialized;
+    int det_log_n = 0;
 
     int n = cat->count();
     for (int i = 0; i < n; i++) {
@@ -413,6 +522,7 @@ static void scan_report_accumulate_ex(scan_category_id_t id, bool deactivate_sta
             }
             new_count++;
             snprintf(last_new_title, sizeof(last_new_title), "%s", sig.title);
+            if (det_log && det_log_n < DET_LOG_BATCH) s_det_log_buf[det_log_n++] = sig;
         }
         seen_t *e = &SEEN_AT(id, f);
         snprintf(e->title, sizeof(e->title), "%s", sig.title);
@@ -424,6 +534,7 @@ static void scan_report_accumulate_ex(scan_category_id_t id, bool deactivate_sta
     SEEN_UNLOCK();
 
     notify_new_devices(id, new_count, last_new_title);
+    if (det_log) detection_log_flush(id, s_det_log_buf, det_log_n);
 }
 
 void scan_report_accumulate(scan_category_id_t id) {
